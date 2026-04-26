@@ -1,5 +1,6 @@
-# dependencies
+# dependencies（约 1.9 万+ 文件，必须忽略，否则「Changes」会显示 1 万+ 未跟踪）
 node_modules/
+**/node_modules/
 
 # build / forge
 out/
@@ -10,6 +11,7 @@ dist/
 # logs
 *.log
 .codex-*.log
+.codex-electron-*.log
 
 # env
 .env
@@ -22,6 +24,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+settings.local.json
 *.swp
 *.swo
 
@@ -30,4 +33,5 @@ AI-Infra-Learning-App-PRD.md
 PLAN.md
 
 # misc
+.claude
 .claude/

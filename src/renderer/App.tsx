@@ -152,11 +152,9 @@ export default function App() {
             <h2>知识点学习</h2>
           </div>
           {progress ? (
-            <div className="progress-box" aria-label="总学习进度">
+            <div className="progress-box">
               <span>进度 {progress.completedTopics}/{progress.totalTopics}</span>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${completedPercent}%` }} />
-              </div>
+              <progress aria-label="总学习进度" max={100} value={completedPercent} />
             </div>
           ) : null}
         </header>

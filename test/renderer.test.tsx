@@ -63,6 +63,7 @@ describe('App', () => {
     expect(await screen.findByText('为什么重要')).toBeInTheDocument();
     expect(screen.getByText('Arithmetic Intensity = FLOPs / Bytes')).toBeInTheDocument();
     expect(screen.getByText('进度 0/21')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '总学习进度' })).toHaveAttribute('value', '0');
   });
 
   it('updates topic status through the preload learning API', async () => {

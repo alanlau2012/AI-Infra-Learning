@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from '../src/main/security';
 
@@ -28,6 +30,12 @@ describe('Electron security defaults', () => {
     );
     expect(prodCsp).not.toContain("'unsafe-inline'");
     expect(prodCsp).not.toContain("'unsafe-eval'");
+  });
+
+  it('keeps index.html free of static CSP so Electron can install the environment-specific policy', () => {
+    const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+
+    expect(indexHtml).not.toContain('http-equiv="Content-Security-Policy"');
   });
 
   it('validates study statuses before IPC writes', () => {

@@ -3,7 +3,14 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import type Database from 'better-sqlite3';
 import type { SeedData, StudyStatus } from '../shared/types';
-import { getOutline, getProgress, getTopic, initializeDatabase, updateTopicStatus } from './database';
+import {
+  getOutline,
+  getProgress,
+  getRoadmapGraph,
+  getTopic,
+  initializeDatabase,
+  updateTopicStatus
+} from './database';
 import { getDatabasePath, getMigrationsDir, getSeedDataPath } from './paths';
 import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from './security';
 
@@ -15,6 +22,7 @@ const SHOW_WINDOW_FALLBACK_MS = 5_000;
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
+let mainTrack: string[] = [];
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -202,6 +210,7 @@ function installCsp(isDevelopment: boolean) {
 function openApplicationDatabase() {
   const seedPath = getSeedDataPath();
   const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8')) as SeedData;
+  mainTrack = seedData.learning_paths?.main_track?.sequence ?? [];
   return initializeDatabase({
     dbPath: getDatabasePath(),
     seedData,
@@ -218,6 +227,7 @@ function registerIpcHandlers(getDb: () => Database.Database) {
     }
     return getTopic(getDb(), topicId);
   });
+  ipcMain.handle('learning:getRoadmapGraph', () => getRoadmapGraph(getDb(), mainTrack));
   ipcMain.handle('learning:updateTopicStatus', (_event, topicId: unknown, status: unknown) => {
     if (typeof topicId !== 'string' || typeof status !== 'string') {
       throw new Error('Invalid IPC payload: topicId and status must be strings');

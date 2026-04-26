@@ -20,10 +20,16 @@ export interface SeedTopic {
   real_world_connection: string;
 }
 
+export interface SeedLearningPath {
+  name?: string;
+  description?: string;
+  sequence: string[];
+}
+
 export interface SeedData {
   stages: SeedStage[];
   topics: SeedTopic[];
-  learning_paths?: Record<string, unknown>;
+  learning_paths?: Record<string, SeedLearningPath>;
   metadata?: Record<string, unknown>;
 }
 
@@ -50,6 +56,17 @@ export interface TopicDetail extends TopicSummary {
   realWorldConnection: string | null;
   keyPoints: string[];
   prerequisites: TopicSummary[];
+  bodyMd: string | null;
+}
+
+export interface RoadmapEdge {
+  from: string; // prerequisite topic id
+  to: string;   // dependent topic id
+}
+
+export interface RoadmapGraph {
+  edges: RoadmapEdge[];
+  mainTrack: string[];
 }
 
 export interface ProgressSummary {

@@ -1,0 +1,137 @@
+.roadmap-root {
+  width: 100%;
+  height: calc(100vh - 92px);
+  background: #0b1322;
+}
+
+.roadmap-root .react-flow {
+  background: #0b1322;
+}
+
+.roadmap-root .react-flow__background {
+  background-color: #0b1322;
+}
+
+.roadmap-root .react-flow__controls button,
+.roadmap-root .react-flow__minimap {
+  background: #1f2937;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  fill: #cbd5e1;
+}
+
+.roadmap-root .react-flow__controls button svg {
+  fill: #cbd5e1;
+}
+
+.roadmap-root .react-flow__minimap-mask {
+  fill: rgba(15, 23, 42, 0.7);
+}
+
+.roadmap-root .react-flow__edge-path {
+  stroke: #475569;
+  stroke-width: 1.4;
+}
+
+.roadmap-root .react-flow__edge.main-track .react-flow__edge-path {
+  stroke: #facc15;
+  stroke-width: 2.2;
+}
+
+/* Topic node */
+.topic-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 220px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #162033;
+  color: #dbe7f6;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-color 120ms, transform 120ms;
+}
+
+.topic-node:hover {
+  border-color: #5eead4;
+  transform: translateY(-1px);
+}
+
+.topic-node.status-in_progress {
+  border-color: #2563eb;
+  background: #14223e;
+}
+
+.topic-node.status-completed {
+  border-color: #16a34a;
+  background: #122d22;
+}
+
+.topic-node.main-track {
+  box-shadow: 0 0 0 1px #facc15 inset;
+}
+
+.topic-node-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.topic-node-id {
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.topic-node-stars {
+  color: #facc15;
+  letter-spacing: 1px;
+}
+
+.topic-node-name {
+  font-size: 13px;
+  line-height: 1.35;
+  color: #f1f5f9;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Stage group */
+.stage-group {
+  width: 100%;
+  height: 100%;
+  padding: 10px 14px;
+  border: 1px dashed #334155;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.35);
+  color: #f8fafc;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.stage-group-id {
+  color: #5eead4;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.stage-group-name {
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Hide React Flow handles since they're cosmetic in our DAG */
+.topic-node .react-flow__handle {
+  width: 6px;
+  height: 6px;
+  background: #334155;
+  border: 1px solid #475569;
+}

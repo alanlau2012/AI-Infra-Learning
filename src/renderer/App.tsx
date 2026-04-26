@@ -1,25 +1,24 @@
-import { BookOpen, CheckCircle2, Circle, Clock3, Loader2, PlayCircle, Star, Timer } from 'lucide-react';
-import type { ReactElement } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ProgressSummary, StageWithTopics, StudyStatus, TopicDetail } from '../shared/types';
-
-const statusLabels: Record<StudyStatus, string> = {
-  not_started: '未学习',
-  in_progress: '学习中',
-  completed: '已完成'
-};
-
-const statusIcons: Record<StudyStatus, ReactElement> = {
-  not_started: <Circle aria-hidden="true" size={16} />,
-  in_progress: <PlayCircle aria-hidden="true" size={16} />,
-  completed: <CheckCircle2 aria-hidden="true" size={16} />
-};
+import type {
+  ProgressSummary,
+  RoadmapGraph,
+  StageWithTopics,
+  StudyStatus,
+  TopicDetail
+} from '../shared/types';
+import RoadmapView from './components/roadmap/RoadmapView';
+import Sidebar from './components/Sidebar';
+import TopicDetailView from './components/TopicDetailView';
+import ViewTabs, { type LearningView } from './components/ViewTabs';
 
 export default function App() {
   const [outline, setOutline] = useState<StageWithTopics[]>([]);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [topic, setTopic] = useState<TopicDetail | null>(null);
   const [progress, setProgress] = useState<ProgressSummary | null>(null);
+  const [roadmap, setRoadmap] = useState<RoadmapGraph | null>(null);
+  const [view, setView] = useState<LearningView>('list');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const latestSelectId = useRef(0);
@@ -29,9 +28,10 @@ export default function App() {
 
     async function loadInitialData() {
       try {
-        const [nextOutline, nextProgress] = await Promise.all([
+        const [nextOutline, nextProgress, nextRoadmap] = await Promise.all([
           window.learning.getOutline(),
-          window.learning.getProgress()
+          window.learning.getProgress(),
+          window.learning.getRoadmapGraph()
         ]);
         const firstTopicId = nextOutline[0]?.topics[0]?.id ?? null;
         const firstTopic = firstTopicId ? await window.learning.getTopic(firstTopicId) : null;
@@ -42,6 +42,7 @@ export default function App() {
 
         setOutline(nextOutline);
         setProgress(nextProgress);
+        setRoadmap(nextRoadmap);
         setSelectedTopicId(firstTopicId);
         setTopic(firstTopic);
       } catch (loadError) {
@@ -75,6 +76,11 @@ export default function App() {
         setError(e instanceof Error ? e.message : '加载专题失败');
       }
     }
+  }
+
+  async function selectFromRoadmap(topicId: string) {
+    await selectTopic(topicId);
+    setView('list');
   }
 
   async function updateStatus(status: StudyStatus) {
@@ -124,116 +130,37 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="学习专题导航">
-        <div className="brand">
-          <BookOpen aria-hidden="true" size={24} />
-          <div>
-            <h1>AI Infra 学习系统</h1>
-            <p>Windows 本地学习版</p>
-          </div>
-        </div>
-
-        <nav className="stage-list">
-          {outline.map((stage) => (
-            <section className="stage-section" key={stage.id}>
-              <div className="stage-title">
-                <span>{stage.id}</span>
-                <strong>{stage.name}</strong>
-              </div>
-              <div className="topic-list">
-                {stage.topics.map((item) => (
-                  <button
-                    className={`topic-button ${selectedTopicId === item.id ? 'selected' : ''}`}
-                    key={item.id}
-                    onClick={() => void selectTopic(item.id)}
-                    type="button"
-                  >
-                    <span className={`status-dot ${item.status}`} />
-                    <span className="topic-id">{item.id}</span>
-                    <span className="topic-name">{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </nav>
-      </aside>
+      <Sidebar
+        outline={outline}
+        selectedTopicId={selectedTopicId}
+        onSelectTopic={(id) => void selectTopic(id)}
+      />
 
       <section className="content">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Phase 1 MVP</span>
+            <span className="eyebrow">Phase 2</span>
             <h2>知识点学习</h2>
           </div>
-          {progress ? (
-            <div className="progress-box">
-              <span>进度 {progress.completedTopics}/{progress.totalTopics}</span>
-              <progress aria-label="总学习进度" max={100} value={completedPercent} />
-            </div>
-          ) : null}
+          <div className="topbar-right">
+            <ViewTabs view={view} onChange={setView} />
+            {progress ? (
+              <div className="progress-box">
+                <span>进度 {progress.completedTopics}/{progress.totalTopics}</span>
+                <progress aria-label="总学习进度" max={100} value={completedPercent} />
+              </div>
+            ) : null}
+          </div>
         </header>
 
-        {topic ? (
-          <article className="topic-detail">
-            <div className="topic-heading">
-              <div>
-                <span className="topic-code">{topic.id}</span>
-                <h3>{topic.name}</h3>
-              </div>
-              <div className={`status-pill ${topic.status}`}>
-                {statusIcons[topic.status]}
-                <span>{statusLabels[topic.status]}</span>
-              </div>
-            </div>
-
-            <div className="meta-row">
-              <span>
-                <Timer aria-hidden="true" size={16} />
-                {topic.studyTimeMinutes} 分钟
-              </span>
-              <span>
-                <Star aria-hidden="true" size={16} />
-                难度 {topic.difficulty}/3
-              </span>
-              <span>
-                <Clock3 aria-hidden="true" size={16} />
-                前置 {topic.prerequisites.length ? topic.prerequisites.map((item) => item.id).join(', ') : '无'}
-              </span>
-            </div>
-
-            <section className="detail-section">
-              <h4>为什么重要</h4>
-              <p>{topic.why}</p>
-            </section>
-
-            <section className="detail-section">
-              <h4>关键知识点</h4>
-              <ol className="key-points">
-                {topic.keyPoints.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ol>
-            </section>
-
-            <section className="detail-section">
-              <h4>实战关联</h4>
-              <p>{topic.realWorldConnection}</p>
-            </section>
-
-            <div className="status-actions" aria-label="学习状态">
-              {(Object.keys(statusLabels) as StudyStatus[]).map((status) => (
-                <button
-                  className={topic.status === status ? 'active' : ''}
-                  key={status}
-                  onClick={() => void updateStatus(status)}
-                  type="button"
-                >
-                  {statusIcons[status]}
-                  {statusLabels[status]}
-                </button>
-              ))}
-            </div>
-          </article>
+        {view === 'roadmap' && roadmap ? (
+          <RoadmapView
+            outline={outline}
+            graph={roadmap}
+            onSelectTopic={(id) => void selectFromRoadmap(id)}
+          />
+        ) : topic ? (
+          <TopicDetailView topic={topic} onUpdateStatus={(status) => void updateStatus(status)} />
         ) : (
           <div className="empty-state">暂无可学习专题</div>
         )}

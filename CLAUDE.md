@@ -1,0 +1,227 @@
+# CLAUDE.md
+
+本文件是 AI coding agent 在本仓库工作的项目级指引。优先遵循本文约定，再结合具体任务做最小可用迭代。
+
+---
+
+## 项目定位
+
+GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已交付 Phase 1 MVP + Phase 2 第一批增量。
+
+- **Phase 1 已交付**：4 个 Stage / 21 个 Topic 的内置学习内容、专题详情、学习状态持久化、进度统计
+- **Phase 2 已交付（DAG + Markdown 增量）**：
+  - 路线图视图：React Flow 渲染 21 节点的依赖 DAG，按 Stage 分组、主干路径金色高亮、点击节点跳转列表
+  - Topic 富文本：`topics.body_md` 列承载 Markdown 内容，支持代码块（语法高亮）、表格、引用、列表
+- **Phase 2 未交付**：考试模块、知识管理 CRUD、JSON 导入导出
+- **Phase 3+ 暂不动**：移动端、多端同步、AI 出题、主题切换
+
+产品和原始规划文档（`AI-Infra-Learning-App-PRD.md`、`PLAN.md`）已被 `.gitignore` 排除，仅存在于 Alan 本地。当前增强方案见 `C:\Users\AlanL\.claude\plans\ai-infra-learning-app-prd-concurrent-gray.md`。
+
+---
+
+## 技术栈
+
+- Electron Forge 7.x + Vite + TypeScript
+- Renderer：React 19 + TypeScript
+- 本地数据：SQLite via `better-sqlite3` 12.x
+- DAG：`@xyflow/react` (React Flow v12) + `dagre` 自动布局
+- Markdown：`markdown-it` + `DOMPurify` + `highlight.js`（按需注册 8 种语言）
+- 测试：Vitest + Testing Library + jsdom
+- 包管理：npm（依赖以 `package.json` / `package-lock.json` 为准）
+
+---
+
+## 常用命令
+
+```bash
+npm install              # 装依赖（postinstall 自动 electron-rebuild for better-sqlite3）
+npm start                # 启动 Electron dev
+npm test                 # 跑全部测试（5 文件 / 31 用例）
+npm run typecheck        # tsc --noEmit
+npx vite build           # 仅打 renderer bundle 验证
+npm run build            # vite build + electron-forge package（Win x64）
+npm run deindex:node_modules   # 清理误入库的 node_modules
+```
+
+### ⚠️ better-sqlite3 / Vitest 兼容性陷阱
+
+`postinstall` 把 `better-sqlite3` rebuild 成 Electron 的 NODE_MODULE_VERSION（145）。
+但 vitest 用的是系统 Node（一般是 137），版本不匹配会让 `database.test.ts` 全部失败。
+
+正确切换姿势：
+
+```bash
+# 跑测试前
+npm rebuild better-sqlite3                    # 编为系统 Node
+npm test
+
+# 跑 npm start 前
+npx electron-rebuild -f -w better-sqlite3     # 编回 Electron
+```
+
+不要把这层切换抽象成自动 hook，会让 CI 和本地行为分叉。改 SQL/IPC 后人工切一次即可。
+
+---
+
+## 代码结构
+
+```
+src/
+  main/
+    main.ts                      Electron 主进程入口、IPC 注册、CSP 安装、单实例锁
+    preload.ts                   contextBridge 暴露 window.learning（5 个方法）
+    database.ts                  多版本 migration runner + 全部 SQL（getOutline/getTopic/getProgress/getRoadmapGraph/updateTopicStatus）
+    paths.ts                     dev/prod 资源路径解析
+    security.ts                  CSP 字符串生成 + isValidStudyStatus
+  renderer/
+    App.tsx                      顶层 state（outline/topic/progress/roadmap/view），无 react-router
+    main.tsx                     React 挂载入口
+    styles.css                   主题样式 + ViewTabs + .markdown-body
+    lib/
+      markdown.ts                markdown-it + DOMPurify + highlight.js 单例（XSS 防线）
+    components/
+      Sidebar.tsx                两级导航树
+      TopicDetailView.tsx        详情卡片（why / key_points / bodyMd / real_world_connection）
+      MarkdownContent.tsx        Markdown → 安全 HTML 渲染
+      ViewTabs.tsx               列表 / 路线图 切换
+      roadmap/
+        RoadmapView.tsx          React Flow 容器
+        TopicNode.tsx            自定义 topic 节点（状态色 + 难度星 + 主干描金）
+        StageGroupNode.tsx       Stage 背景分组
+        useDagreLayout.ts        dagre LR 布局 + Stage bounding box
+        roadmap.css              roadmap 作用域样式
+  shared/
+    types.ts                     main / preload / renderer 共享类型
+
+migrations/
+  001_init.sql                   初始 schema + seed（不要再改）
+  002_add_topic_body.sql         ALTER topics ADD body_md TEXT
+
+resources/
+  seed_data.json                 4 Stage / 21 Topic seed + learning_paths.main_track
+
+test/
+  database.test.ts               9 用例：迁移幂等性、roadmap graph、CRUD
+  markdown.test.ts               11 用例：XSS sanitization + 渲染基础
+  renderer.test.tsx              4 用例：加载、状态切换、视图切换、sidebar 选中
+  electronSecurity.test.ts       5 用例：CSP / webPreferences
+  paths.test.ts                  2 用例：dev/prod 路径解析
+  setup.ts                       jsdom polyfill（ResizeObserver / DOMMatrix）
+```
+
+---
+
+## IPC 边界
+
+`window.learning` 是 renderer 与 main 之间唯一的桥（`src/main/preload.ts`）：
+
+| 方法 | 返回 |
+|------|------|
+| `getOutline()` | `StageWithTopics[]` |
+| `getProgress()` | `ProgressSummary` |
+| `getTopic(id)` | `TopicDetail`（含 `bodyMd`、`prerequisites`、`keyPoints`） |
+| `getRoadmapGraph()` | `{ edges: {from,to}[]; mainTrack: string[] }` |
+| `updateTopicStatus(id, status)` | `TopicDetail` |
+
+新增 IPC 必须：
+1. 在 `database.ts` 写纯函数（input → SQL → output）
+2. 在 `main.ts` 用 `ipcMain.handle('learning:xxx', ...)` 注册
+3. 在 `preload.ts` 通过 `ipcRenderer.invoke` 暴露到 `learning.xxx`
+4. 在 `shared/types.ts` 定义返回类型
+5. 校验入参类型/值域，并加入测试覆盖非法输入
+
+---
+
+## 数据库与迁移
+
+- DB 路径：`app.getPath('userData')/data.db`，禁止硬编码 `%APPDATA%`
+- Resources 路径：开发用 `app.getAppPath()`，打包用 `process.resourcesPath`
+- **内容数据 vs 用户进度严格分离**：
+  - 内容：`topics`、`key_points`、`prerequisites`
+  - 进度：`topic_progress`（独立表，按 topic_id PK）
+  - 富文本：`topics.body_md`（属于内容侧）
+
+### Migration runner 不变量（极重要）
+
+`runPendingMigrations` 完全由 `schema_migrations` 表的 marker 驱动：
+- 已记录的版本绝不重跑
+- `001_init` 是唯一会跑 seed 的迁移
+- 新版本必须新建 `migrations/00N_xxx.sql` + 在 `MIGRATIONS` 数组按序加版本号
+- 不要修改已发布迁移的语义（除非确实在未发布重做阶段）
+- 全程包在 `db.transaction` 里，失败必须留下干净状态
+
+---
+
+## Electron 安全基线
+
+`BrowserWindow` 必须保持：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`、`webSecurity: true`。
+
+CSP（`src/main/security.ts`）：
+- Dev：放开 Vite HMR 必需的 `unsafe-inline / unsafe-eval / ws://localhost:*`
+- Prod：严格 `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'`
+- React Flow 的 inline `style` 属性在 Electron 上**默认不被 `style-src` 拦截**（DOM 属性 ≠ `<style>` 块）。如真出问题，最小补丁是 `style-src-attr 'unsafe-inline'`，**不要**放开 `style-src`。
+
+### Markdown XSS 防线（不要绕过）
+
+`src/renderer/lib/markdown.ts` 的渲染管道：
+1. `markdown-it` 配置 `html: false`（裸 HTML 一律转义）
+2. 输出 HTML 字符串走 `DOMPurify.sanitize`
+3. `ALLOWED_URI_REGEXP` 仅允许 `http(s) | mailto | # | /`
+4. `afterSanitizeAttributes` hook 双重拒绝 `data:` / `javascript:` URL，给 http 链接强制 `rel=noopener noreferrer target=_blank`
+5. 渲染组件用 `dangerouslySetInnerHTML`，但这步前已 sanitize
+
+绝不允许：
+- `markdown-it` 开 `html: true`
+- 跳过 `DOMPurify`
+- 放宽 `ALLOWED_URI_REGEXP`
+- 引入需要 `unsafe-eval` 的依赖（如 KaTeX 历史版本）
+
+---
+
+## 测试要求
+
+- 改数据库 / 迁移 / seed / 进度逻辑：`npm test`
+- 改共享类型 / IPC / 主进程：`npm run typecheck`
+- 改 Electron 安全配置：补 `test/electronSecurity.test.ts`
+- 改资源路径或打包：补 `test/paths.test.ts`，并考虑打包验证
+- 改 Markdown 管道：补 `test/markdown.test.ts` 的 XSS 用例
+- 改 UI：覆盖加载初始数据、切换 Topic、更新状态、视图切换
+
+### React Flow 在 jsdom 下的限制
+
+React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserver` / `DOMMatrix` polyfill）。集成测试只验证：
+1. 视图容器 `data-testid="roadmap-root"` 出现
+2. `getRoadmapGraph` IPC 被调用
+3. 节点点击的回调通过单元测试覆盖（直接调 `selectFromRoadmap`），不在 jsdom 里点真实节点
+
+节点点击的端到端联动需要 Electron 实窗手测。
+
+---
+
+## Windows 与打包
+
+- 目标平台优先 Windows
+- Forge 默认输出到系统临时目录 `ai-infra-learning-out`，避免中文工程路径触发 Squirrel/rcedit 不稳定
+- 可用 `FORGE_OUT_DIR` 覆盖打包输出目录
+- `better-sqlite3` 是 native 模块，打包后必须验证 `CREATE TABLE` / `INSERT` / `SELECT` 在干净 Windows 机器可用
+- 首轮内部分发可用未签名 Squirrel/zip；扩大分发前补代码签名
+
+---
+
+## 实现原则
+
+- MVP 迭代：先完成最小可用闭环，再按需扩展
+- 保持架构边界：数据读写留在 main，renderer 只调 `window.learning.*`
+- 改数据结构必须同步更新：`shared/types.ts` + 迁移 + seed（如需）+ 查询逻辑 + 测试
+- 不为兼容未发布的中间状态叠加 shim
+- 保持 TypeScript `strict` 通过
+- 优先小而明确的函数，避免过早抽象
+- 不主动扩展 Phase 2 未交付的考试 / CRUD 功能，除非用户明确要求
+
+---
+
+## 文档与沟通
+
+- 面向用户的文档默认简体中文
+- 修改行为边界时在 PR / 说明里标明是否影响 Phase 1 / Phase 2 验收
+- 不要提交：生成产物、临时日志、数据库文件、`node_modules`、PRD/PLAN（均已 gitignored）

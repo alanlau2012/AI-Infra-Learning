@@ -3,6 +3,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import type {
   ProgressSummary,
+  RoadmapGraph,
   SeedData,
   StageWithTopics,
   StudyStatus,
@@ -10,7 +11,8 @@ import type {
   TopicSummary
 } from '../shared/types';
 
-const MIGRATION_VERSION = '001_init';
+const MIGRATIONS = ['001_init', '002_add_topic_body'] as const;
+const SEED_MIGRATION = '001_init';
 const VALID_STATUSES = new Set<StudyStatus>(['not_started', 'in_progress', 'completed']);
 
 interface CountRow {
@@ -27,6 +29,10 @@ interface TopicRow {
   why: string | null;
   real_world_connection: string | null;
   status: StudyStatus | null;
+}
+
+interface TopicDetailRow extends TopicRow {
+  body_md: string | null;
 }
 
 interface StageRow {
@@ -48,9 +54,7 @@ export function initializeDatabase(options: InitializeDatabaseOptions) {
   db.pragma('foreign_keys = ON');
 
   try {
-    if (!hasMigration(db, MIGRATION_VERSION)) {
-      runInitialMigration(db, options.seedData, options.migrationsDir);
-    }
+    runPendingMigrations(db, options.seedData, options.migrationsDir);
     return db;
   } catch (error) {
     db.close();
@@ -103,12 +107,13 @@ export function getTopic(db: Database.Database, topicId: string): TopicDetail {
         topics.study_time_minutes,
         topics.why,
         topics.real_world_connection,
+        topics.body_md,
         coalesce(topic_progress.status, 'not_started') as status
       from topics
       left join topic_progress on topic_progress.topic_id = topics.id
       where topics.id = ? and topics.is_deleted = 0`
     )
-    .get(topicId) as TopicRow | undefined;
+    .get(topicId) as TopicDetailRow | undefined;
 
   if (!row) {
     throw new Error(`Topic not found: ${topicId}`);
@@ -145,7 +150,8 @@ export function getTopic(db: Database.Database, topicId: string): TopicDetail {
     why: row.why,
     realWorldConnection: row.real_world_connection,
     keyPoints,
-    prerequisites
+    prerequisites,
+    bodyMd: row.body_md
   };
 }
 
@@ -173,6 +179,17 @@ export function updateTopicStatus(
   ).run(topicId, status);
 
   return getTopic(db, topicId);
+}
+
+export function getRoadmapGraph(db: Database.Database, mainTrack: string[]): RoadmapGraph {
+  const rows = db
+    .prepare('select prerequisite_id as "from", topic_id as "to" from prerequisites')
+    .all() as Array<{ from: string; to: string }>;
+
+  return {
+    edges: rows,
+    mainTrack: [...mainTrack]
+  };
 }
 
 export function getProgress(db: Database.Database): ProgressSummary {
@@ -216,30 +233,41 @@ export function getProgress(db: Database.Database): ProgressSummary {
   };
 }
 
-function hasMigration(db: Database.Database, version: string) {
+function runPendingMigrations(db: Database.Database, seedData: SeedData, migrationsDir?: string) {
+  const dir = migrationsDir ?? path.resolve(process.cwd(), 'migrations');
+  const applied = readAppliedMigrations(db);
+
+  // 校验 seed 一次性完成（即便不需要 seed 这个版本，也提前发现脏数据）。
+  if (!applied.has(SEED_MIGRATION)) {
+    validateSeed(seedData);
+  }
+
+  for (const version of MIGRATIONS) {
+    if (applied.has(version)) {
+      continue;
+    }
+    const sql = fs.readFileSync(path.join(dir, `${version}.sql`), 'utf8');
+
+    db.transaction(() => {
+      db.exec(sql);
+      if (version === SEED_MIGRATION) {
+        insertSeedData(db, seedData);
+      }
+      db.prepare('insert into schema_migrations (version) values (?)').run(version);
+    })();
+  }
+}
+
+function readAppliedMigrations(db: Database.Database): Set<string> {
   const hasTable = db
     .prepare("select count(*) as count from sqlite_master where type = 'table' and name = 'schema_migrations'")
     .get() as CountRow;
   if (hasTable.count === 0) {
-    return false;
+    return new Set();
   }
 
-  const row = db.prepare('select 1 from schema_migrations where version = ?').get(version);
-  return Boolean(row);
-}
-
-function runInitialMigration(db: Database.Database, seedData: SeedData, migrationsDir?: string) {
-  validateSeed(seedData);
-  const sql = fs.readFileSync(
-    path.join(migrationsDir ?? path.resolve(process.cwd(), 'migrations'), '001_init.sql'),
-    'utf8'
-  );
-
-  db.transaction(() => {
-    db.exec(sql);
-    insertSeedData(db, seedData);
-    db.prepare('insert into schema_migrations (version) values (?)').run(MIGRATION_VERSION);
-  })();
+  const rows = db.prepare('select version from schema_migrations').all() as Array<{ version: string }>;
+  return new Set(rows.map((row) => row.version));
 }
 
 function insertSeedData(db: Database.Database, seedData: SeedData) {

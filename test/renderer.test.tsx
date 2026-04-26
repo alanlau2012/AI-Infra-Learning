@@ -22,6 +22,15 @@ const outline: StageWithTopics[] = [
         difficulty: 2,
         studyTimeMinutes: 45,
         status: 'not_started'
+      },
+      {
+        id: 'T02',
+        stageId: 'S1',
+        name: 'KV Cache 与显存计算',
+        sortOrder: 2,
+        difficulty: 2,
+        studyTimeMinutes: 40,
+        status: 'not_started'
       }
     ]
   }
@@ -32,7 +41,8 @@ const topic: TopicDetail = {
   why: '所有推理优化决策的根基。',
   realWorldConnection: 'MTP 能提升 memory-bound 场景效率。',
   keyPoints: ['Arithmetic Intensity = FLOPs / Bytes', 'Decode 阶段 memory-bound'],
-  prerequisites: []
+  prerequisites: [],
+  bodyMd: null
 };
 
 const progress: ProgressSummary = {
@@ -43,11 +53,32 @@ const progress: ProgressSummary = {
   stageProgress: [{ stageId: 'S1', stageName: '第一性原理', totalTopics: 1, completedTopics: 0 }]
 };
 
+const t02Topic: TopicDetail = {
+  id: 'T02',
+  stageId: 'S1',
+  name: 'KV Cache 与显存计算',
+  sortOrder: 2,
+  difficulty: 2,
+  studyTimeMinutes: 40,
+  status: 'not_started',
+  why: 'KV Cache 决定并发能力。',
+  realWorldConnection: '910B3 vs 910B4 容量差异。',
+  keyPoints: ['公式：2 × num_layers × ...'],
+  prerequisites: [outline[0].topics[0]],
+  bodyMd: null
+};
+
 beforeEach(() => {
   window.learning = {
     getOutline: vi.fn().mockResolvedValue(outline),
     getProgress: vi.fn().mockResolvedValue(progress),
-    getTopic: vi.fn().mockResolvedValue(topic),
+    getTopic: vi.fn().mockImplementation((id: string) =>
+      Promise.resolve(id === 'T02' ? t02Topic : topic)
+    ),
+    getRoadmapGraph: vi.fn().mockResolvedValue({
+      edges: [{ from: 'T01', to: 'T02' }],
+      mainTrack: ['T01', 'T02']
+    }),
     updateTopicStatus: vi.fn().mockResolvedValue({ ...topic, status: 'completed' })
   };
 });
@@ -76,5 +107,34 @@ describe('App', () => {
     await waitFor(() => {
       expect(window.learning.updateTopicStatus).toHaveBeenCalledWith('T01', 'completed');
     });
+  });
+
+  it('switches between list and roadmap views and triggers the roadmap IPC on first switch', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+
+    await user.click(screen.getByRole('tab', { name: /路线图/ }));
+    expect(await screen.findByTestId('roadmap-root')).toBeInTheDocument();
+    expect(window.learning.getRoadmapGraph).toHaveBeenCalled();
+
+    // 切回列表视图后详情仍能正常显示。
+    await user.click(screen.getByRole('tab', { name: /列表/ }));
+    await screen.findByRole('heading', { name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+  });
+
+  it('selecting T02 from the sidebar loads its detail through getTopic', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+
+    await user.click(screen.getByRole('button', { name: /T02KV Cache 与显存计算/ }));
+
+    await waitFor(() => {
+      expect(window.learning.getTopic).toHaveBeenCalledWith('T02');
+    });
+    await screen.findByRole('heading', { name: 'KV Cache 与显存计算' });
   });
 });

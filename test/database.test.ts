@@ -7,6 +7,7 @@ import seed from '../resources/seed_data.json';
 import {
   getOutline,
   getProgress,
+  getRoadmapGraph,
   getTopic,
   initializeDatabase,
   updateTopicStatus
@@ -27,7 +28,7 @@ afterEach(() => {
 });
 
 describe('database initialization', () => {
-  it('initializes the complete seed data and migration marker in one fresh database', () => {
+  it('initializes the complete seed data and migration markers in one fresh database', () => {
     const dir = makeTempDir();
     const dbPath = path.join(dir, 'data.db');
 
@@ -35,13 +36,16 @@ describe('database initialization', () => {
 
     expect(db.prepare('select count(*) as count from stages').get()).toEqual({ count: 4 });
     expect(db.prepare('select count(*) as count from topics').get()).toEqual({ count: 21 });
-    expect(db.prepare('select count(*) as count from schema_migrations').get()).toEqual({ count: 1 });
+    expect(db.prepare('select count(*) as count from schema_migrations').get()).toEqual({ count: 2 });
     expect(db.prepare('select count(*) as count from key_points where topic_id = ?').get('T01')).toEqual({
       count: seed.topics.find((topic) => topic.id === 'T01')?.key_points.length
     });
     expect(db.prepare('select prerequisite_id from prerequisites where topic_id = ?').all('T02')).toEqual([
       { prerequisite_id: 'T01' }
     ]);
+
+    const columns = db.prepare("pragma table_info(topics)").all() as Array<{ name: string }>;
+    expect(columns.some((col) => col.name === 'body_md')).toBe(true);
 
     db.close();
   });
@@ -54,8 +58,40 @@ describe('database initialization', () => {
     const db = initializeDatabase({ dbPath, seedData: seed });
 
     expect(db.prepare('select count(*) as count from topics').get()).toEqual({ count: 21 });
-    expect(db.prepare('select count(*) as count from schema_migrations').get()).toEqual({ count: 1 });
+    expect(db.prepare('select count(*) as count from schema_migrations').get()).toEqual({ count: 2 });
 
+    db.close();
+  });
+
+  it('skips migrations whose version marker already exists (idempotency by marker)', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+
+    // 完整初始化（应用了 001 + 002）。
+    initializeDatabase({ dbPath, seedData: seed }).close();
+
+    // 删除 002 marker，但保留已加上的 body_md 列；再次初始化时 runner 会把 002 当作 pending
+    // 并尝试再跑一次 ALTER，因为列已存在所以应抛出 duplicate column 错误。
+    // 这反向证明 runner 完全由 marker 驱动是否执行。
+    {
+      const db = new Database(dbPath);
+      db.prepare("delete from schema_migrations where version = '002_add_topic_body'").run();
+      db.close();
+    }
+
+    expect(() => initializeDatabase({ dbPath, seedData: seed })).toThrow(/duplicate column|already exists/i);
+  });
+
+  it('persists topic.body_md round-trip through the database layer', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+    const db = initializeDatabase({ dbPath, seedData: seed });
+
+    const sample = '# Hello\n\n```python\nprint("中文")\n```\n';
+    db.prepare('update topics set body_md = ? where id = ?').run(sample, 'T01');
+    const row = db.prepare('select body_md from topics where id = ?').get('T01') as { body_md: string };
+
+    expect(row.body_md).toBe(sample);
     db.close();
   });
 
@@ -117,6 +153,24 @@ describe('learning queries', () => {
     expect(getProgress(reopened).completedTopics).toBe(1);
 
     reopened.close();
+  });
+
+  it('returns the full roadmap graph: all prerequisite edges plus the seed main_track', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+    const db = initializeDatabase({ dbPath, seedData: seed });
+
+    const expectedEdgeCount = seed.topics.reduce((sum, topic) => sum + topic.prerequisites.length, 0);
+    const expectedMainTrack = seed.learning_paths?.main_track?.sequence ?? [];
+
+    const graph = getRoadmapGraph(db, expectedMainTrack);
+
+    expect(graph.edges).toHaveLength(expectedEdgeCount);
+    expect(graph.mainTrack).toEqual(expectedMainTrack);
+    // 任取 T02 → T01 验证边方向（prerequisite → topic）
+    expect(graph.edges).toContainEqual({ from: 'T01', to: 'T02' });
+
+    db.close();
   });
 
   it('rejects invalid topic ids and invalid statuses before writing', () => {

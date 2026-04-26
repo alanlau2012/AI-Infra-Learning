@@ -1,0 +1,12 @@
+{
+  "search.exclude": {
+    "**/node_modules": true,
+    "out": true,
+    ".vite": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "out/**": true,
+    ".vite/**": true
+  }
+}

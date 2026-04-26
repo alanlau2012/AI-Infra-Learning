@@ -1,4 +1,3 @@
-# dependencies（约 1.9 万+ 文件，必须忽略，否则「Changes」会显示 1 万+ 未跟踪）
 node_modules/
 **/node_modules/
 
@@ -21,14 +20,15 @@ dist/
 .DS_Store
 Thumbs.db
 
-# IDE
-.idea/
-.vscode/
+# IDE（保留团队共享的 .vscode/settings.json，其余本地用）
+.vscode/*
+!.vscode/settings.json
 settings.local.json
 *.swp
 *.swo
+.idea/
 
-# 产品与规划类文档（非运行时代码，留在本地即可）
+# 产品与规划类文档
 AI-Infra-Learning-App-PRD.md
 PLAN.md
 

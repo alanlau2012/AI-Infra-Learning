@@ -1,0 +1,6 @@
+# Cursor index; keep in sync with bulky dirs in .gitignore
+node_modules
+**/node_modules
+out
+.vite
+dist

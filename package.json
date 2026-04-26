@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "vite build && electron-forge package --platform=win32 --arch=x64",
+    "deindex:node_modules": "node ./scripts/untrack-node_modules.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "keywords": [],

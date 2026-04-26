@@ -130,4 +130,58 @@ describe('learning queries', () => {
 
     db.close();
   });
+
+  it('soft-deleted prerequisite topic is excluded from getTopic prerequisites (regression for Critical #1)', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+    const db = initializeDatabase({ dbPath, seedData: seed });
+
+    // T02 has T01 as its prerequisite (verified by seed data)
+    const before = getTopic(db, 'T02');
+    expect(before.prerequisites.some((p) => p.id === 'T01')).toBe(true);
+
+    // Soft-delete T01
+    db.prepare('update topics set is_deleted = 1 where id = ?').run('T01');
+
+    const after = getTopic(db, 'T02');
+    expect(after.prerequisites.some((p) => p.id === 'T01')).toBe(false);
+
+    db.close();
+  });
+
+  it('soft-deleted topic is excluded from getOutline', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+    const db = initializeDatabase({ dbPath, seedData: seed });
+
+    const before = getOutline(db);
+    const totalBefore = before.reduce((sum, stage) => sum + stage.topics.length, 0);
+    expect(totalBefore).toBe(21);
+
+    db.prepare('update topics set is_deleted = 1 where id = ?').run('T01');
+
+    const after = getOutline(db);
+    const totalAfter = after.reduce((sum, stage) => sum + stage.topics.length, 0);
+    expect(totalAfter).toBe(20);
+    expect(after.flatMap((s) => s.topics).some((t) => t.id === 'T01')).toBe(false);
+
+    db.close();
+  });
+
+  it('updateTopicStatus is idempotent when called with the same status twice', () => {
+    const dir = makeTempDir();
+    const dbPath = path.join(dir, 'data.db');
+    const db = initializeDatabase({ dbPath, seedData: seed });
+
+    const first = updateTopicStatus(db, 'T01', 'in_progress');
+    const second = updateTopicStatus(db, 'T01', 'in_progress');
+
+    expect(first.status).toBe('in_progress');
+    expect(second.status).toBe('in_progress');
+    expect(db.prepare('select count(*) as count from topic_progress where topic_id = ?').get('T01')).toEqual({
+      count: 1
+    });
+
+    db.close();
+  });
 });

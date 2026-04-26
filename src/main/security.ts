@@ -1,6 +1,6 @@
 import type { StudyStatus } from '../shared/types';
 
-const VALID_STATUSES = new Set<StudyStatus>(['not_started', 'in_progress', 'completed']);
+export const VALID_STATUSES = new Set<StudyStatus>(['not_started', 'in_progress', 'completed']);
 
 export function getSecureWebPreferences(preload: string) {
   return {

@@ -1,6 +1,6 @@
 import { BookOpen, CheckCircle2, Circle, Clock3, Loader2, PlayCircle, Star, Timer } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProgressSummary, StageWithTopics, StudyStatus, TopicDetail } from '../shared/types';
 
 const statusLabels: Record<StudyStatus, string> = {
@@ -22,6 +22,7 @@ export default function App() {
   const [progress, setProgress] = useState<ProgressSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestSelectId = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,8 +63,18 @@ export default function App() {
   }, []);
 
   async function selectTopic(topicId: string) {
+    const requestId = ++latestSelectId.current;
     setSelectedTopicId(topicId);
-    setTopic(await window.learning.getTopic(topicId));
+    try {
+      const nextTopic = await window.learning.getTopic(topicId);
+      if (latestSelectId.current === requestId) {
+        setTopic(nextTopic);
+      }
+    } catch (e) {
+      if (latestSelectId.current === requestId) {
+        setError(e instanceof Error ? e.message : '加载专题失败');
+      }
+    }
   }
 
   async function updateStatus(status: StudyStatus) {
@@ -71,15 +82,18 @@ export default function App() {
       return;
     }
 
-    const nextTopic = await window.learning.updateTopicStatus(topic.id, status);
-    const [nextOutline, nextProgress] = await Promise.all([
-      window.learning.getOutline(),
-      window.learning.getProgress()
-    ]);
-
-    setTopic(nextTopic);
-    setOutline(nextOutline);
-    setProgress(nextProgress);
+    try {
+      const nextTopic = await window.learning.updateTopicStatus(topic.id, status);
+      const [nextOutline, nextProgress] = await Promise.all([
+        window.learning.getOutline(),
+        window.learning.getProgress()
+      ]);
+      setTopic(nextTopic);
+      setOutline(nextOutline);
+      setProgress(nextProgress);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '更新状态失败');
+    }
   }
 
   const completedPercent = useMemo(() => {

@@ -9,9 +9,9 @@ import type {
   TopicDetail,
   TopicSummary
 } from '../shared/types';
+import { VALID_STATUSES } from './security';
 
 const MIGRATION_VERSION = '001_init';
-const VALID_STATUSES = new Set<StudyStatus>(['not_started', 'in_progress', 'completed']);
 
 interface CountRow {
   count: number;
@@ -135,6 +135,7 @@ export function getTopic(db: Database.Database, topicId: string): TopicDetail {
       join topics on topics.id = prerequisites.prerequisite_id
       left join topic_progress on topic_progress.topic_id = topics.id
       where prerequisites.topic_id = ?
+        and topics.is_deleted = 0
       order by topics.id`
     )
     .all(topicId)
@@ -281,14 +282,10 @@ function insertSeedData(db: Database.Database, seedData: SeedData) {
   const insertPrerequisite = db.prepare(
     'insert into prerequisites (topic_id, prerequisite_id) values (?, ?)'
   );
-  const insertProgress = db.prepare(
-    'insert into topic_progress (topic_id, status) values (?, ?)'
-  );
 
   for (const topic of seedData.topics) {
     topic.key_points.forEach((point, index) => insertKeyPoint.run(topic.id, point, index + 1));
     topic.prerequisites.forEach((prerequisiteId) => insertPrerequisite.run(topic.id, prerequisiteId));
-    insertProgress.run(topic.id, 'not_started');
   }
 }
 
@@ -310,7 +307,7 @@ function validateSeed(seedData: SeedData) {
 }
 
 function assertTopicId(topicId: string) {
-  if (!/^T\d{2}$/.test(topicId)) {
+  if (!/^T\d{2,}$/.test(topicId)) {
     throw new Error(`Invalid topicId: ${topicId}`);
   }
 }

@@ -77,4 +77,57 @@ describe('App', () => {
       expect(window.learning.updateTopicStatus).toHaveBeenCalledWith('T01', 'completed');
     });
   });
+
+  it('shows error UI when initial data load fails', async () => {
+    vi.mocked(window.learning.getOutline).mockRejectedValue(new Error('IPC bridge broken'));
+
+    render(<App />);
+
+    expect(await screen.findByText('启动失败')).toBeInTheDocument();
+    expect(await screen.findByText('IPC bridge broken')).toBeInTheDocument();
+  });
+
+  it('shows error when selectTopic fails', async () => {
+    const user = userEvent.setup();
+
+    const outline2: typeof outline = [
+      {
+        ...outline[0],
+        topics: [
+          ...outline[0].topics,
+          {
+            id: 'T02',
+            stageId: 'S1',
+            name: '第二专题',
+            sortOrder: 2,
+            difficulty: 1,
+            studyTimeMinutes: 30,
+            status: 'not_started'
+          }
+        ]
+      }
+    ];
+    vi.mocked(window.learning.getOutline).mockResolvedValue(outline2);
+    vi.mocked(window.learning.getTopic)
+      .mockResolvedValueOnce(topic)
+      .mockRejectedValueOnce(new Error('Topic fetch failed'));
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await user.click(screen.getByRole('button', { name: /T02.*第二专题/ }));
+
+    expect(await screen.findByText('Topic fetch failed')).toBeInTheDocument();
+  });
+
+  it('shows error screen when updateTopicStatus fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(window.learning.updateTopicStatus).mockRejectedValue(new Error('Status update failed'));
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await user.click(screen.getByRole('button', { name: '已完成' }));
+
+    expect(await screen.findByText('Status update failed')).toBeInTheDocument();
+    expect(screen.getByText('启动失败')).toBeInTheDocument();
+  });
 });

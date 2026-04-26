@@ -1,5 +1,3 @@
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE stages (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -36,8 +34,8 @@ CREATE TABLE prerequisites (
     topic_id        TEXT NOT NULL,
     prerequisite_id TEXT NOT NULL,
     PRIMARY KEY (topic_id, prerequisite_id),
-    FOREIGN KEY (topic_id) REFERENCES topics(id),
-    FOREIGN KEY (prerequisite_id) REFERENCES topics(id)
+    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE RESTRICT,
+    FOREIGN KEY (prerequisite_id) REFERENCES topics(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE questions (
@@ -86,3 +84,5 @@ CREATE TABLE schema_migrations (
     version    TEXT PRIMARY KEY,
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_topics_stage_id ON topics(stage_id);

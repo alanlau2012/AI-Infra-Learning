@@ -10,6 +10,9 @@ import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus }
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+/** 若 ready-to-show 因 GPU/渲染异常未触发，5 s 后强制显示窗口 */
+const SHOW_WINDOW_FALLBACK_MS = 5_000;
+
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
 
@@ -52,10 +55,10 @@ if (!gotSingleInstanceLock) {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      dialog.showErrorBox(
-        'AI Infra Learning 启动失败',
-        `${message}\n\n请从项目根目录在终端中执行：npm start`
-      );
+      const hint = app.isPackaged
+        ? '请反馈日志文件或重新安装应用。'
+        : '请从项目根目录在终端中执行：npm start';
+      dialog.showErrorBox('AI Infra Learning 启动失败', `${message}\n\n${hint}`);
       app.quit();
     }
   });
@@ -85,6 +88,20 @@ function createWindow() {
   });
 
   const w = mainWindow;
+
+  // 拒绝所有新窗口请求（Electron 安全清单）
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // 阻止渲染层跳转到应用自身 URL 以外的地址
+  w.webContents.on('will-navigate', (event, navigationUrl) => {
+    const devUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL;
+    const allowed = devUrl
+      ? navigationUrl.startsWith(devUrl)
+      : new URL(navigationUrl).protocol === 'file:';
+    if (!allowed) {
+      event.preventDefault();
+    }
+  });
+
   w.once('ready-to-show', () => {
     if (w.isDestroyed()) {
       return;
@@ -100,7 +117,7 @@ function createWindow() {
     }
     w.show();
     void w.focus();
-  }, 5000);
+  }, SHOW_WINDOW_FALLBACK_MS);
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const devServerUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL;
@@ -111,7 +128,19 @@ function createWindow() {
       }
     });
   } else {
-    void w.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    const prodHtmlPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    w.loadFile(prodHtmlPath).catch(() => {
+      // 错误通过 did-fail-load 上报，这里吞掉避免 unhandled rejection。
+    });
+    w.webContents.on('did-fail-load', (_event, _errorCode, errorDescription, _url, isMainFrame) => {
+      if (!isMainFrame || w.isDestroyed()) {
+        return;
+      }
+      dialog.showErrorBox(
+        'AI Infra Learning 加载失败',
+        `渲染页面加载失败：${errorDescription}\n\n请反馈日志文件或重新安装应用。`
+      );
+    });
   }
 }
 
@@ -183,12 +212,19 @@ function openApplicationDatabase() {
 function registerIpcHandlers(getDb: () => Database.Database) {
   ipcMain.handle('learning:getOutline', () => getOutline(getDb()));
   ipcMain.handle('learning:getProgress', () => getProgress(getDb()));
-  ipcMain.handle('learning:getTopic', (_event, topicId: string) => getTopic(getDb(), topicId));
-  ipcMain.handle('learning:updateTopicStatus', (_event, topicId: string, status: string) => {
+  ipcMain.handle('learning:getTopic', (_event, topicId: unknown) => {
+    if (typeof topicId !== 'string') {
+      throw new Error('Invalid IPC payload: topicId must be a string');
+    }
+    return getTopic(getDb(), topicId);
+  });
+  ipcMain.handle('learning:updateTopicStatus', (_event, topicId: unknown, status: unknown) => {
+    if (typeof topicId !== 'string' || typeof status !== 'string') {
+      throw new Error('Invalid IPC payload: topicId and status must be strings');
+    }
     if (!isValidStudyStatus(status)) {
       throw new Error(`Invalid status: ${status}`);
     }
-
     return updateTopicStatus(getDb(), topicId, status as StudyStatus);
   });
 }

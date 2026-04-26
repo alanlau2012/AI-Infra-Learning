@@ -25,5 +25,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# 产品与规划类文档（非运行时代码，留在本地即可）
+AI-Infra-Learning-App-PRD.md
+PLAN.md
+
 # misc
 .claude/

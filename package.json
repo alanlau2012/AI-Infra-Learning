@@ -1,0 +1,47 @@
+{
+  "name": "ai-infra-learning",
+  "version": "1.0.0",
+  "description": "Windows Electron MVP for the AI Infra learning system",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build && electron-forge package --platform=win32 --arch=x64",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "keywords": [],
+  "author": "Alan Lau",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "lucide-react": "^1.11.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron/rebuild": "^4.0.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^41.3.0",
+    "jsdom": "^29.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.9"
+  }
+}

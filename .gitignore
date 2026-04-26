@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# build / forge
+out/
+.vite/
+dist/
+*.tsbuildinfo
+
+# logs
+*.log
+.codex-*.log
+
+# env
+.env
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# misc
+.claude/

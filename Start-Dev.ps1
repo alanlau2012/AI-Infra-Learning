@@ -5,8 +5,7 @@
 # 步骤：
 #   1. 检查 Node.js >= 18
 #   2. 按需执行 npm install（node_modules 缺失或依赖有更新时）
-#   3. 按需重新编译 better-sqlite3 原生模块（仅当 .node 文件不存在时）
-#   4. npm start 启动 Electron 开发服务
+#   3. npm start 启动 Electron 开发服务
 
 $ErrorActionPreference = 'Stop'
 
@@ -66,7 +65,7 @@ if (-not $needInstall) {
 }
 
 if ($needInstall) {
-    Write-Step "执行 npm install（postinstall 会自动重新编译 better-sqlite3）..."
+    Write-Step "执行 npm install..."
     npm install
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "npm install 失败，请检查网络连接或依赖配置。"
@@ -75,25 +74,7 @@ if ($needInstall) {
     Write-OK "依赖安装完成。"
 }
 
-# ---- Step 3: 检测 better-sqlite3 原生模块（仅在跳过 install 时需检查）----
-if (-not $needInstall) {
-    Write-Step "检查 better-sqlite3 原生模块..."
-    $bindingFile = "$root\node_modules\better-sqlite3\build\Release\better_sqlite3.node"
-
-    if (-not (Test-Path $bindingFile)) {
-        Write-Warn "未找到 better_sqlite3.node，正在为当前 Electron 重新编译..."
-        npx electron-rebuild -f -w better-sqlite3
-        if ($LASTEXITCODE -ne 0) {
-            Write-Fail "electron-rebuild 失败，请手动运行：npx electron-rebuild -f -w better-sqlite3"
-            exit 1
-        }
-        Write-OK "better-sqlite3 重新编译完成。"
-    } else {
-        Write-OK "better-sqlite3 原生模块已就绪。"
-    }
-}
-
-# ---- Step 4: 启动开发服务 ----
+# ---- Step 3: 启动开发服务 ----
 Write-Step "启动 Electron 开发服务（npm start）..."
 Write-Host "  按 Ctrl+C 可停止。" -ForegroundColor DarkGray
 Write-Host ""

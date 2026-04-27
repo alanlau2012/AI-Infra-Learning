@@ -49,6 +49,11 @@ export default function TopicDetailView({ topic, onUpdateStatus }: Props) {
         </span>
       </div>
 
+      <section className="detail-section detail-body-section">
+        <h4>详细内容</h4>
+        {topic.bodyMd ? <MarkdownContent markdown={topic.bodyMd} /> : <p>正文内容待补充。</p>}
+      </section>
+
       <section className="detail-section">
         <h4>为什么重要</h4>
         <p>{topic.why}</p>
@@ -62,13 +67,6 @@ export default function TopicDetailView({ topic, onUpdateStatus }: Props) {
           ))}
         </ol>
       </section>
-
-      {topic.bodyMd ? (
-        <section className="detail-section">
-          <h4>详细内容</h4>
-          <MarkdownContent markdown={topic.bodyMd} />
-        </section>
-      ) : null}
 
       <section className="detail-section">
         <h4>实战关联</h4>

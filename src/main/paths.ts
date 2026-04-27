@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { app } from 'electron';
 
-export function getDatabasePath() {
-  return path.join(app.getPath('userData'), 'data.db');
+export function getProgressPath() {
+  return resolveProgressPath(app.getPath('userData'));
 }
 
 function getDevResourceRoot() {
@@ -12,14 +12,6 @@ function getDevResourceRoot() {
 
 export function getSeedDataPath() {
   return resolveSeedDataPath({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    cwd: getDevResourceRoot()
-  });
-}
-
-export function getMigrationsDir() {
-  return resolveMigrationsDir({
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     cwd: getDevResourceRoot()
@@ -38,14 +30,6 @@ export function resolveSeedDataPath(options: {
   return path.join(options.resourcesPath, 'seed_data.json');
 }
 
-export function resolveMigrationsDir(options: {
-  isPackaged: boolean;
-  resourcesPath: string;
-  cwd: string;
-}) {
-  if (!options.isPackaged) {
-    return path.resolve(options.cwd, 'migrations');
-  }
-
-  return path.join(options.resourcesPath, 'migrations');
+export function resolveProgressPath(userDataPath: string) {
+  return path.join(userDataPath, 'progress.json');
 }

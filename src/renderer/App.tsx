@@ -71,9 +71,9 @@ export default function App() {
       if (latestSelectId.current === requestId) {
         setTopic(nextTopic);
       }
-    } catch (e) {
+    } catch (nextError) {
       if (latestSelectId.current === requestId) {
-        setError(e instanceof Error ? e.message : '加载专题失败');
+        setError(nextError instanceof Error ? nextError.message : '加载专题失败');
       }
     }
   }
@@ -97,8 +97,8 @@ export default function App() {
       setTopic(nextTopic);
       setOutline(nextOutline);
       setProgress(nextProgress);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '更新状态失败');
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : '更新状态失败');
     }
   }
 
@@ -139,15 +139,44 @@ export default function App() {
       <section className="content">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Phase 2</span>
+            <span className="eyebrow">Phase 1 MVP</span>
             <h2>知识点学习</h2>
           </div>
           <div className="topbar-right">
             <ViewTabs view={view} onChange={setView} />
             {progress ? (
-              <div className="progress-box">
-                <span>进度 {progress.completedTopics}/{progress.totalTopics}</span>
-                <progress aria-label="总学习进度" max={100} value={completedPercent} />
+              <div className="progress-panel">
+                <div className="progress-box">
+                  <span>总进度 {progress.completedTopics}/{progress.totalTopics}</span>
+                  <progress aria-label="总学习进度" max={100} value={completedPercent} />
+                </div>
+                <div className="stage-progress-box" aria-label="阶段进度">
+                  <strong>阶段进度</strong>
+                  <div className="stage-progress-list">
+                    {progress.stageProgress.map((item) => {
+                      const stagePercent =
+                        item.totalTopics === 0
+                          ? 0
+                          : Math.round((item.completedTopics / item.totalTopics) * 100);
+
+                      return (
+                        <div className="stage-progress-item" key={item.stageId}>
+                          <div className="stage-progress-label">
+                            <span>{item.stageName}</span>
+                            <span>
+                              {item.completedTopics}/{item.totalTopics}
+                            </span>
+                          </div>
+                          <progress
+                            aria-label={`阶段 ${item.stageId} 进度`}
+                            max={100}
+                            value={stagePercent}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>

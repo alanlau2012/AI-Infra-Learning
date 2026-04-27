@@ -182,6 +182,45 @@ button {
   font-size: 14px;
 }
 
+.progress-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.stage-progress-box {
+  min-width: 240px;
+  padding: 12px 14px;
+  border: 1px solid #263143;
+  border-radius: 10px;
+  background: #121d31;
+  color: #dbe7f6;
+}
+
+.stage-progress-box strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.stage-progress-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stage-progress-item {
+  display: grid;
+  gap: 6px;
+}
+
+.stage-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #a8b6c8;
+}
+
 .progress-box progress {
   appearance: none;
   width: 100%;
@@ -205,6 +244,31 @@ button {
 .progress-box progress::-moz-progress-bar {
   border-radius: 999px;
   background: #5eead4;
+}
+
+.stage-progress-item progress {
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 0;
+  background: #263143;
+}
+
+.stage-progress-item progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: #263143;
+}
+
+.stage-progress-item progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: #60a5fa;
+}
+
+.stage-progress-item progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: #60a5fa;
 }
 
 .topic-detail {
@@ -279,6 +343,11 @@ button {
 .detail-section {
   padding: 22px 0;
   border-top: 1px solid #263143;
+}
+
+.detail-body-section {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .detail-section h4 {

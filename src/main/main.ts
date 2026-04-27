@@ -1,17 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
-import type Database from 'better-sqlite3';
 import type { SeedData, StudyStatus } from '../shared/types';
-import {
-  getOutline,
-  getProgress,
-  getRoadmapGraph,
-  getTopic,
-  initializeDatabase,
-  updateTopicStatus
-} from './database';
-import { getDatabasePath, getMigrationsDir, getSeedDataPath } from './paths';
+import { createLearningStore, type LearningStore } from './learningStore';
+import { getProgressPath, getSeedDataPath } from './paths';
 import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from './security';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -21,8 +13,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 const SHOW_WINDOW_FALLBACK_MS = 5_000;
 
 let mainWindow: BrowserWindow | null = null;
-let db: Database.Database | null = null;
-let mainTrack: string[] = [];
+let learningStore: LearningStore | null = null;
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -47,12 +38,12 @@ if (!gotSingleInstanceLock) {
     try {
       const isDevelopment = Boolean(MAIN_WINDOW_VITE_DEV_SERVER_URL);
       installCsp(isDevelopment);
-      db = openApplicationDatabase();
+      learningStore = openLearningStore();
       registerIpcHandlers(() => {
-        if (!db) {
-          throw new Error('Database is not initialized');
+        if (!learningStore) {
+          throw new Error('Learning store is not initialized');
         }
-        return db;
+        return learningStore;
       });
       createWindow();
 
@@ -78,8 +69,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('before-quit', () => {
-    db?.close();
-    db = null;
+    learningStore = null;
   });
 }
 
@@ -207,27 +197,25 @@ function installCsp(isDevelopment: boolean) {
   });
 }
 
-function openApplicationDatabase() {
+function openLearningStore() {
   const seedPath = getSeedDataPath();
   const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8')) as SeedData;
-  mainTrack = seedData.learning_paths?.main_track?.sequence ?? [];
-  return initializeDatabase({
-    dbPath: getDatabasePath(),
+  return createLearningStore({
     seedData,
-    migrationsDir: getMigrationsDir()
+    progressPath: getProgressPath()
   });
 }
 
-function registerIpcHandlers(getDb: () => Database.Database) {
-  ipcMain.handle('learning:getOutline', () => getOutline(getDb()));
-  ipcMain.handle('learning:getProgress', () => getProgress(getDb()));
+function registerIpcHandlers(getStore: () => LearningStore) {
+  ipcMain.handle('learning:getOutline', () => getStore().getOutline());
+  ipcMain.handle('learning:getProgress', () => getStore().getProgress());
   ipcMain.handle('learning:getTopic', (_event, topicId: unknown) => {
     if (typeof topicId !== 'string') {
       throw new Error('Invalid IPC payload: topicId must be a string');
     }
-    return getTopic(getDb(), topicId);
+    return getStore().getTopic(topicId);
   });
-  ipcMain.handle('learning:getRoadmapGraph', () => getRoadmapGraph(getDb(), mainTrack));
+  ipcMain.handle('learning:getRoadmapGraph', () => getStore().getRoadmapGraph());
   ipcMain.handle('learning:updateTopicStatus', (_event, topicId: unknown, status: unknown) => {
     if (typeof topicId !== 'string' || typeof status !== 'string') {
       throw new Error('Invalid IPC payload: topicId and status must be strings');
@@ -235,6 +223,6 @@ function registerIpcHandlers(getDb: () => Database.Database) {
     if (!isValidStudyStatus(status)) {
       throw new Error(`Invalid status: ${status}`);
     }
-    return updateTopicStatus(getDb(), topicId, status as StudyStatus);
+    return getStore().updateTopicStatus(topicId, status as StudyStatus);
   });
 }

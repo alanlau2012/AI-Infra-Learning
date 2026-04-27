@@ -18,6 +18,7 @@ export interface SeedTopic {
   why: string;
   key_points: string[];
   real_world_connection: string;
+  body_md?: string;
 }
 
 export interface SeedLearningPath {

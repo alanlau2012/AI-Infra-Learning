@@ -9,10 +9,7 @@ const config: ForgeConfig = {
   outDir: process.env.FORGE_OUT_DIR ?? path.join(os.tmpdir(), 'ai-infra-learning-out'),
   packagerConfig: {
     asar: true,
-    extraResource: ['resources/seed_data.json', 'migrations']
-  },
-  rebuildConfig: {
-    extraModules: ['better-sqlite3']
+    extraResource: ['resources/seed_data.json']
   },
   makers: [
     new MakerSquirrel({

@@ -11,7 +11,7 @@ GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已�
 - **Phase 1 已交付**：4 个 Stage / 21 个 Topic 的内置学习内容、专题详情、学习状态持久化、进度统计
 - **Phase 2 已交付（DAG + Markdown 增量）**：
   - 路线图视图：React Flow 渲染 21 节点的依赖 DAG，按 Stage 分组、主干路径金色高亮、点击节点跳转列表
-  - Topic 富文本：`topics.body_md` 列承载 Markdown 内容，支持代码块（语法高亮）、表格、引用、列表
+  - Topic 富文本：seed 内容生成/承载 Markdown，支持代码块（语法高亮）、表格、引用、列表
 - **Phase 2 未交付**：考试模块、知识管理 CRUD、JSON 导入导出
 - **Phase 3+ 暂不动**：移动端、多端同步、AI 出题、主题切换
 
@@ -23,7 +23,7 @@ GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已�
 
 - Electron Forge 7.x + Vite + TypeScript
 - Renderer：React 19 + TypeScript
-- 本地数据：SQLite via `better-sqlite3` 12.x
+- 本地数据：`resources/seed_data.json` 承载课程内容，`userData/progress.json` 持久化学习状态
 - DAG：`@xyflow/react` (React Flow v12) + `dagre` 自动布局
 - Markdown：`markdown-it` + `DOMPurify` + `highlight.js`（按需注册 8 种语言）
 - 测试：Vitest + Testing Library + jsdom
@@ -34,43 +34,14 @@ GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已�
 ## 常用命令
 
 ```bash
-npm install              # 装依赖（postinstall 自动 electron-rebuild for better-sqlite3）
+npm install              # 装依赖
 npm start                # 启动 Electron dev
-npm test                 # 跑全部测试（5 文件 / 31 用例）
+npm test                 # 跑全部测试（5 文件 / 33 用例）
 npm run typecheck        # tsc --noEmit
 npx vite build           # 仅打 renderer bundle 验证
 npm run build            # vite build + electron-forge package（Win x64）
 npm run deindex:node_modules   # 清理误入库的 node_modules
 ```
-
-### better-sqlite3 / Vitest ABI 切换（已自动化）
-
-`better-sqlite3` 是 native 模块，编译产物绑定到一个具体 NODE_MODULE_VERSION：
-
-| 运行时 | NODE_MODULE_VERSION |
-|--------|---------------------|
-| Electron 41 | 145 |
-| 系统 Node 22 | 127 |
-
-`npm test`（vitest）跑在系统 Node 上，`npm start`（Electron）跑在 Electron 内置 Node 上，两者所需 ABI 不同。
-现在两端都有**懒执行守卫**自动处理：
-
-- `prestart` → `scripts/ensure-electron-binding.mjs`：用 `ELECTRON_RUN_AS_NODE=1` 让 Electron 自身 try require binding，命中跳过，未命中调 `@electron/rebuild`
-- `pretest` → `scripts/ensure-node-binding.mjs`：在系统 Node 下 try require，未命中调 `npm rebuild better-sqlite3`
-
-ABI 已匹配时只多花几百毫秒探测，命中再 rebuild。CI 跑 `npm test` 也走 pretest 守卫，与本地行为一致。
-
-需要手动操作时使用显式脚本：
-
-```bash
-npm run rebuild:electron    # 编为 Electron ABI（修主进程/IPC 后想直接 npm start）
-npm run rebuild:node        # 编为系统 Node ABI（只跑测试时）
-```
-
-⚠️ 不要再往 `postinstall`、`prebuild` 等其它 hook 上继续叠这层切换；当前两个守卫已覆盖
-启动/测试两条主路径，再叠层只会让 CI 和本地行为分叉。
-
----
 
 ## 代码结构
 
@@ -79,7 +50,7 @@ src/
   main/
     main.ts                      Electron 主进程入口、IPC 注册、CSP 安装、单实例锁
     preload.ts                   contextBridge 暴露 window.learning（5 个方法）
-    database.ts                  多版本 migration runner + 全部 SQL（getOutline/getTopic/getProgress/getRoadmapGraph/updateTopicStatus）
+    learningStore.ts             seed + progress.json 数据服务（getOutline/getTopic/getProgress/getRoadmapGraph/updateTopicStatus）
     paths.ts                     dev/prod 资源路径解析
     security.ts                  CSP 字符串生成 + isValidStudyStatus
   renderer/
@@ -102,15 +73,11 @@ src/
   shared/
     types.ts                     main / preload / renderer 共享类型
 
-migrations/
-  001_init.sql                   初始 schema + seed（不要再改）
-  002_add_topic_body.sql         ALTER topics ADD body_md TEXT
-
 resources/
   seed_data.json                 4 Stage / 21 Topic seed + learning_paths.main_track
 
 test/
-  database.test.ts               9 用例：迁移幂等性、roadmap graph、CRUD
+  learningStore.test.ts          seed 加载、progress.json 持久化、roadmap graph、非法输入
   markdown.test.ts               11 用例：XSS sanitization + 渲染基础
   renderer.test.tsx              4 用例：加载、状态切换、视图切换、sidebar 选中
   electronSecurity.test.ts       5 用例：CSP / webPreferences
@@ -133,7 +100,7 @@ test/
 | `updateTopicStatus(id, status)` | `TopicDetail` |
 
 新增 IPC 必须：
-1. 在 `database.ts` 写纯函数（input → SQL → output）
+1. 在 `learningStore.ts` 写纯函数（input → seed/progress → output）
 2. 在 `main.ts` 用 `ipcMain.handle('learning:xxx', ...)` 注册
 3. 在 `preload.ts` 通过 `ipcRenderer.invoke` 暴露到 `learning.xxx`
 4. 在 `shared/types.ts` 定义返回类型
@@ -141,23 +108,14 @@ test/
 
 ---
 
-## 数据库与迁移
+## 数据与持久化
 
-- DB 路径：`app.getPath('userData')/data.db`，禁止硬编码 `%APPDATA%`
+- 进度路径：`app.getPath('userData')/progress.json`，禁止硬编码 `%APPDATA%`
 - Resources 路径：开发用 `app.getAppPath()`，打包用 `process.resourcesPath`
 - **内容数据 vs 用户进度严格分离**：
-  - 内容：`topics`、`key_points`、`prerequisites`
-  - 进度：`topic_progress`（独立表，按 topic_id PK）
-  - 富文本：`topics.body_md`（属于内容侧）
-
-### Migration runner 不变量（极重要）
-
-`runPendingMigrations` 完全由 `schema_migrations` 表的 marker 驱动：
-- 已记录的版本绝不重跑
-- `001_init` 是唯一会跑 seed 的迁移
-- 新版本必须新建 `migrations/00N_xxx.sql` + 在 `MIGRATIONS` 数组按序加版本号
-- 不要修改已发布迁移的语义（除非确实在未发布重做阶段）
-- 全程包在 `db.transaction` 里，失败必须留下干净状态
+  - 内容：`resources/seed_data.json`
+  - 进度：`progress.json`，格式 `{ "version": 1, "topicStatus": { "T01": "completed" } }`
+- 不要重新引入 SQLite / migrations，除非产品明确进入更复杂的数据管理阶段。
 
 ---
 
@@ -189,7 +147,7 @@ CSP（`src/main/security.ts`）：
 
 ## 测试要求
 
-- 改数据库 / 迁移 / seed / 进度逻辑：`npm test`
+- 改 seed / learning store / 进度逻辑：`npm test`
 - 改共享类型 / IPC / 主进程：`npm run typecheck`
 - 改 Electron 安全配置：补 `test/electronSecurity.test.ts`
 - 改资源路径或打包：补 `test/paths.test.ts`，并考虑打包验证
@@ -212,7 +170,6 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 - 目标平台优先 Windows
 - Forge 默认输出到系统临时目录 `ai-infra-learning-out`，避免中文工程路径触发 Squirrel/rcedit 不稳定
 - 可用 `FORGE_OUT_DIR` 覆盖打包输出目录
-- `better-sqlite3` 是 native 模块，打包后必须验证 `CREATE TABLE` / `INSERT` / `SELECT` 在干净 Windows 机器可用
 - 首轮内部分发可用未签名 Squirrel/zip；扩大分发前补代码签名
 
 ---
@@ -221,7 +178,7 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 
 - MVP 迭代：先完成最小可用闭环，再按需扩展
 - 保持架构边界：数据读写留在 main，renderer 只调 `window.learning.*`
-- 改数据结构必须同步更新：`shared/types.ts` + 迁移 + seed（如需）+ 查询逻辑 + 测试
+- 改数据结构必须同步更新：`shared/types.ts` + seed（如需）+ learning store + 测试
 - 不为兼容未发布的中间状态叠加 shim
 - 保持 TypeScript `strict` 通过
 - 优先小而明确的函数，避免过早抽象
@@ -233,4 +190,4 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 
 - 面向用户的文档默认简体中文
 - 修改行为边界时在 PR / 说明里标明是否影响 Phase 1 / Phase 2 验收
-- 不要提交：生成产物、临时日志、数据库文件、`node_modules`、PRD/PLAN（均已 gitignored）
+- 不要提交：生成产物、临时日志、进度文件、旧数据库文件、`node_modules`、PRD/PLAN（均已 gitignored）

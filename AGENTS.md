@@ -13,7 +13,7 @@
 
 - Electron Forge + Vite + TypeScript。
 - Renderer 使用 React + TypeScript。
-- 本地数据使用 SQLite，Node 侧访问库为 `better-sqlite3`。
+- 内置课程内容来自 `resources/seed_data.json`；用户学习进度持久化到 `app.getPath('userData')/progress.json`。
 - 测试使用 Vitest、Testing Library、jsdom。
 - 包管理使用 npm，依赖版本以 `package.json` 和 `package-lock.json` 为准。
 
@@ -28,19 +28,18 @@
 
 ## 代码结构
 
-- `src/main/`：Electron main process、IPC、数据库初始化、安全配置、资源路径解析。
+- `src/main/`：Electron main process、IPC、学习数据 store、安全配置、资源路径解析。
 - `src/main/preload.ts`：唯一允许暴露给 renderer 的桥接 API。
 - `src/renderer/`：React UI、样式和浏览器端类型声明。
 - `src/shared/types.ts`：main、preload、renderer 共享的数据类型。
-- `migrations/`：SQLite schema 迁移。
 - `resources/seed_data.json`：内置学习内容 seed。
-- `test/`：数据库、路径、安全和 UI 相关测试。
+- `test/`：学习数据、路径、安全和 UI 相关测试。
 
 ## 实现原则
 
 - 以 MVP 方式迭代：先完成最小可用闭环，再按需求扩展。
 - 优先保持现有架构边界：数据读写留在 main process，renderer 只通过 `window.learning` 调 IPC。
-- 变更数据结构时，同步更新 `src/shared/types.ts`、迁移、seed、查询逻辑和测试。
+- 变更数据结构时，同步更新 `src/shared/types.ts`、seed、学习数据 store 和测试。
 - 避免为了兼容未发布的分支中间状态而叠加 shim；当前分支上的未发布实现可以直接替换为更清晰的方案。
 - 保持 TypeScript `strict` 下可通过类型检查。
 - 新增逻辑优先写小而明确的函数，避免过早抽象。
@@ -48,24 +47,23 @@
 ## Electron 安全基线
 
 - `BrowserWindow` 必须保持安全配置：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`、`webSecurity: true`。
-- Renderer 不得直接访问 Node、文件系统、数据库或 raw `ipcRenderer`。
+- Renderer 不得直接访问 Node、文件系统、进度文件或 raw `ipcRenderer`。
 - preload 只通过 `contextBridge.exposeInMainWorld('learning', ...)` 暴露必要 API。
 - 新增 IPC 时必须校验入参类型和值域，并在测试中覆盖非法输入。
 - 禁止随意放宽生产 CSP。开发模式仅允许 Vite HMR 必需的 `unsafe-inline`、`unsafe-eval` 和 localhost websocket。
 - 继续拒绝新窗口打开和非应用 URL 导航，除非有明确产品需求和安全评审。
 
-## 数据库与资源
+## 数据与资源
 
-- 数据库路径必须使用 `app.getPath('userData')/data.db`，不要硬编码用户目录或 `%APPDATA%`。
+- 学习进度路径必须使用 `app.getPath('userData')/progress.json`，不要硬编码用户目录或 `%APPDATA%`。
 - 开发环境资源从应用根目录解析；打包环境资源从 `process.resourcesPath` 解析。
-- `resources/seed_data.json` 和 `migrations` 需要作为 Forge `extraResource` 打包资源保留。
-- 内容数据和用户进度应保持分离：专题内容在 `topics`、`key_points`、`prerequisites`，进度在 `topic_progress`。
-- 初始迁移必须事务化；seed 或迁移失败时不得留下半初始化数据库。
-- 新增迁移时不要修改已发布迁移的语义，除非明确处于未发布重做阶段。
+- `resources/seed_data.json` 需要作为 Forge `extraResource` 打包资源保留。
+- 内容数据和用户进度应保持分离：专题内容只来自 seed，进度只写入 `progress.json`。
+- 不要重新引入 SQLite 或迁移系统，除非有明确 Phase 2/3 数据复杂度需求。
 
 ## 测试要求
 
-- 修改数据库、迁移、seed 或进度逻辑后，至少运行 `npm test`。
+- 修改 seed、学习数据 store 或进度逻辑后，至少运行 `npm test`。
 - 修改共享类型、IPC 或主进程逻辑后，运行 `npm run typecheck`。
 - 修改 Electron 安全配置时，补充或更新 `test/electronSecurity.test.ts`。
 - 修改资源路径或打包资源时，补充或更新路径/打包相关测试，并考虑 Windows 打包验证。
@@ -76,7 +74,6 @@
 - 目标平台优先 Windows。
 - Forge 默认输出到系统临时目录 `ai-infra-learning-out`，避免中文工程路径触发 Squirrel/rcedit 不稳定问题。
 - 可通过 `FORGE_OUT_DIR` 覆盖打包输出目录。
-- `better-sqlite3` 是 native 模块，安装后依赖 `electron-rebuild`，打包后需要验证数据库 `CREATE TABLE`、`INSERT`、`SELECT` 可用。
 - 首轮内部分发可以是未签名 Squirrel/zip，扩大分发前再处理代码签名。
 
 ## 文档与沟通

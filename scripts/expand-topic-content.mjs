@@ -12,9 +12,9 @@ const topicContent = {
     steps: ['FLOPs', 'Bytes', 'Arithmetic Intensity', 'Roofline 判断', '优化方向'],
     catch: '推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。',
     intuition: '可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。',
-    mechanism: 'Arithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满，Decode 的单 token GEMV 和 KV 读取则经常被带宽限制。',
+    mechanism: 'Arithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满；Dense decode 常由权重读流量和 KV 读取主导，但有效读字节还取决于 MoE、量化、TP 切分和 kernel fusion。',
     formula: '判断路径是：估算 FLOPs、估算需要读写的权重和 KV 字节数，再与硬件的峰值算力和 HBM 带宽相除。Roofline 图上的拐点就是硬件“算得快”和“搬得快”的分界。低于拐点时，优先减少搬运、复用权重、增大 batch 或一次产出更多 token。',
-    scenario: '在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次权重搬运的产出。特别是 Decode 阶段，如果每次只产出一个 token，再多算力也可能闲着；让一次搬运服务更多请求或更多候选 token，才会直接改善吞吐。',
+    scenario: '在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次主路径执行的产出。特别是 Decode 阶段，如果瓶颈确实落在 HBM 读流量和调度碎片上，让一次搬运服务更多请求或更多候选 token，才可能改善吞吐。',
     mistake: '常见误区是只看 TFLOPS，不看带宽和实际 batch。另一个误区是把 Prefill 的结论套到 Decode：Prefill 优化关注矩阵吞吐和排队，Decode 优化更关注权重/KV 复用、调度粒度和尾延迟。',
     summary: '先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。'
   },
@@ -23,8 +23,8 @@ const topicContent = {
     steps: ['Layers', 'KV Heads', 'Head Dim', 'Seq Len', 'Batch', '显存预算'],
     catch: 'KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。',
     intuition: '把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。',
-    mechanism: 'KV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下能承载更多并发。',
-    formula: '容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间。',
+    mechanism: 'KV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。',
+    formula: '容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。',
     scenario: '例如内部评估 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。',
     mistake: '常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。',
     summary: 'KV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。'
@@ -36,7 +36,7 @@ const topicContent = {
     intuition: 'Dense 模型像每个 token 都走完整流水线；MoE 像先经过一个分诊台，只把 token 送给少数专家。这样每 token 计算量下降，但路由、专家负载和跨卡通信会变成新的工程问题。',
     mechanism: 'MoE 要分清总参数和激活参数。总参数决定权重显存和加载成本，激活参数决定每 token 实际计算量。Router 会为每个 token 选择 Top-K expert，专家输出再合并。如果专家分布在多张卡上，还会引入 All-to-All 通信。',
     formula: '推理成本可粗略看作：常驻成本约等于总权重加 KV Cache，单 token 计算约等于被激活专家的 FFN 加 attention。MoE 的收益来自激活稀疏，风险来自路由不均、通信放大、专家热度倾斜和框架适配成熟度。',
-    scenario: '在 GTS 场景里，MoE 适合质量接近大模型、速度接近小模型的 agent 循环。但硬件选型时必须先确认总权重能否放下，再看激活参数是否满足延迟目标。单卡放不下时，专家并行带来的通信成本也要纳入吞吐评估。',
+    scenario: '在 GTS 场景里，MoE 适合质量接近大模型、速度接近小模型的 agent 循环。但硬件选型时必须先确认总权重、KV 和运行时预留能否放下，再看激活参数是否满足延迟目标。以 35B FP16 约 70GB 权重量级为例，单卡 910B3/910B4 都不应视为可直接承载；需要量化或多卡 TP/EP 后才进入可行性评估。',
     mistake: '常见误区是看到 A3B 就以为只需要 3B 权重显存。A3B 说的是每 token 激活量，不等于总模型常驻量。另一个误区是忽略负载均衡，热门 expert 会让某些卡成为局部瓶颈。',
     summary: 'MoE 是用稀疏计算换质量和吞吐，但它没有免除显存、通信和调度账。评估时总参数、激活参数、专家布局要分开看。'
   },
@@ -47,7 +47,7 @@ const topicContent = {
     intuition: '标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。',
     mechanism: 'MHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。',
     formula: '复杂度可以按两条线看：softmax attention 需要随序列增长维护 KV，prefill 还会出现 O(n²) 的注意力矩阵；线性注意力倾向 O(n) 流式更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。',
-    scenario: '模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet 或 CSA/HCA 的 KV 画像完全不同，调度器和显存水位策略也不能照搬。',
+    scenario: '模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、Lightning Attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。',
     mistake: '常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。',
     summary: 'Attention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。'
   },
@@ -57,19 +57,19 @@ const topicContent = {
     catch: 'Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。',
     intuition: '可以把 Gated DeltaNet 想成一本随写随更新的压缩笔记，而 full attention 像偶尔回看原始资料。压缩笔记便宜、稳定、长度友好；原始资料昂贵但细节准。混合架构就是把两者按层分工。',
     mechanism: '公开模型卡显示，Qwen3.5 系列采用 Gated DeltaNet 与 Gated Attention 的混合布局，典型模式是若干 DeltaNet 层后接一层 attention。DeltaNet 层维护固定大小状态，Gated Attention 层保留传统 KV。这样大部分层不再随上下文线性增加 KV Cache。',
-    formula: '部署判断可以拆成三步：先看 dense/MoE 与总权重能否放入目标卡，再看只有部分 full attention 层产生传统 KV 时的并发提升，最后看推理框架是否支持 Gated DeltaNet kernel、MTP head 和对应量化格式。',
-    scenario: '对 GTS 来说，这类模型的吸引力在于长上下文与 agent 循环成本更低。若 910B3 可以承载某个 dense 版本，混合 attention 会让同样显存下的长上下文并发更友好；但如果 Ascend 适配滞后，理论优势会被 kernel 和调度成本吃掉。',
+    formula: '部署判断可以拆成三步：先看 dense/MoE 与总权重能否放入目标卡，再看只有部分 full attention 层产生传统 KV 时的并发提升，最后看推理框架是否支持 Gated DeltaNet kernel、MTP head、状态缓存和对应量化格式。权重量级可放下不等于生产可服务。',
+    scenario: '对 GTS 来说，这类模型的吸引力在于长上下文与 agent 循环成本更低。若某个 dense 版本在 FP8/W8A8 等精度下具备单卡放置窗口，混合 attention 会让同样显存下的长上下文并发更友好；但实际可服务上下文、并发和延迟仍要看 KV/状态开销、runtime buffer 与 Ascend 后端实测。',
     mistake: '常见误区是把 Gated DeltaNet 简化成“没有 KV Cache”。更准确地说，它用固定状态替代传统逐 token KV，仍有状态存储和 kernel 成本。另一个误区是忽略少数 full attention 层，它们仍决定精确检索能力和部分显存增长。',
     summary: 'Qwen 混合架构的核心价值是把长上下文成本从“所有层都增长”变成“少数层增长”。评估时要同时看模型结构、框架支持和硬件 kernel。'
   },
   T21: {
     slug: 't21-deepseek-csa-hca.svg',
-    steps: ['4x CSA 压缩', 'Top-K Sparse', '128x HCA 压缩', 'Dense on Compressed', 'Sliding Window'],
+    steps: ['CSA 压缩', 'Top-K Sparse', '高倍率 HCA 压缩', 'Dense on Compressed', 'Sliding Window'],
     catch: 'DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。',
     intuition: '把 1M token 上下文想成一整座档案馆。CSA 像先把每几页压成摘要，再用索引找到最相关的几摞；HCA 像把整馆压成更短目录，然后每次都扫一遍目录。两者交替，让局部细节和全局视野兼得。',
-    mechanism: '公开技术报告摘要描述了 CSA 与 HCA 的混合 attention。CSA 对 KV 做较小倍率压缩，再用 Lightning Indexer 选择 top-k 压缩块，并保留滑动窗口处理最近 token。HCA 使用更高倍率压缩，对压缩后的短序列做 dense attention，提供低成本全局视野。',
-    formula: '理解它可以用“压缩率 × 检索方式”两维：CSA 压缩较轻、检索稀疏，适合精确找到相关历史；HCA 压缩更重、检索密集，适合全局粗看。滑动窗口则保证最近上下文不被过度压缩。',
-    scenario: 'GTS 近期不一定直接在 910B3 上跑 V4-Pro 级别模型，但这条路线会影响未来开源模型和推理框架。平台需要提前评估 vLLM Ascend、SGLang 或自研 kernel 对非标准 attention 的适配成本。',
+    mechanism: '公开技术报告摘要描述了 CSA 与 HCA 的混合 attention。CSA 对 KV 做较小倍率压缩，再用 Lightning Indexer 选择 top-k 压缩块，并保留滑动窗口处理最近 token。HCA 使用更高倍率的序列维压缩，对压缩后的短序列做 dense attention，提供低成本全局视野。具体收益要回到报告设定、层型比例和实现细节。',
+    formula: '理解它可以用“压缩粒度 × 检索方式”两维：CSA 压缩较轻、检索稀疏，适合精确找到相关历史；HCA 压缩更重、检索密集，适合全局粗看。滑动窗口则保证最近上下文不被过度压缩。类似 m′=128 的数字应理解为特定设计下的序列维压缩粒度，不是所有场景的总 KV 压缩率。',
+    scenario: 'GTS 近期不一定直接在 910B3 上跑 V4-Pro 级别模型，但这条路线可能影响未来开源模型和推理框架。平台需要持续评估 vLLM Ascend、SGLang 或自研 kernel 对非标准 attention 的适配成本，而不是预设适配节奏。',
     mistake: '常见误区是只记住“KV 变小”，忽略压缩器和索引器本身的计算、精度和工程复杂度。另一个误区是认为所有请求都需要 1M 上下文；短上下文场景可能更看重普通 decode 延迟。',
     summary: 'CSA/HCA 代表长上下文模型从“完整保存历史”走向“压缩、索引、局部保真”的方向。它对平台的启示是：未来瓶颈会越来越多地出现在特殊 attention kernel 和缓存管理。'
   },
@@ -89,7 +89,7 @@ const topicContent = {
     steps: ['应用框架', 'GE', 'TBE/Ascend C', 'Runtime', 'AI Core', 'GM/UB'],
     catch: '自研算子的价值，来自把通用实现改成贴着昇腾数据搬运和计算流水线走。',
     intuition: '高级框架像自动挡汽车，能跑但不一定用尽赛道。自研算子像针对赛道调校变速箱和刹车点：目标不是炫技，而是少搬一次数据、少落一次内存、让 Cube/Vector 单元更连续地工作。',
-    mechanism: 'CANN 栈把上层模型图逐步落到硬件执行。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。',
+    mechanism: 'CANN 不是单一路径流水线。应用/框架可能走图执行或 eager 路径，经由 ACL/Runtime 调用底层能力；算子实现则可能来自内置算子、TBE、Ascend C 或自定义 kernel。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。',
     formula: '算子 ROI 可以用三问判断：它是否处在火焰图热点；瓶颈是搬运、计算还是同步；替换后是否减少全局内存读写或 kernel launch。只有命中主路径的优化，才会在服务指标上可见。',
     scenario: 'GTS 自研高性能算子相当于把通用 vLLM/框架适配到 910B 的实际特性。对于 Decode 阶段，哪怕单个算子提升不大，只要它在每 token 每层反复出现，累计收益就会非常可观。',
     mistake: '常见误区是追求单算子 micro benchmark 好看，却没有端到端收益。另一个误区是过早自研所有算子；更稳妥的路径是先用 profiling 找热点，再针对 attention、FFN 和通信边界做少量高价值替换。',
@@ -119,11 +119,11 @@ const topicContent = {
   },
   T08: {
     slug: 't08-prefill-decode.svg',
-    steps: ['Prefill Pool', 'KV Transfer', 'Decode Pool', '4P4D', 'SLA Routing'],
+    steps: ['Prefill Queue', 'KV Connector', 'Decode ACK', 'Watermarks', 'P:D Rebalance'],
     catch: 'P/D 分离的核心，是让“读长 prompt”和“逐 token 生成”不要在同一条队列里互相拖累。',
     intuition: 'Prefill 像一次读完整份材料，工作量大但并行度高；Decode 像边想边写，每次只写一个字但要持续低延迟。把两种工作混在一起，就容易出现长 prompt 把正在生成的用户卡住。',
-    mechanism: 'P/D 分离把 prefill 和 decode 放到不同实例或资源池。Prefill 负责计算 prompt 的 KV，随后把 KV 或必要状态交给 decode。4P4D 可以理解为多个 prefiller 和 decoder 的配比设计，用来同时优化 TTFT 与 ITL。',
-    formula: '配比判断要看三个量：平均输入长度决定 prefill 压力，平均输出长度和并发决定 decode 压力，KV 传输成本决定分离收益是否被网络吃掉。P/D 分离不是越细越好，传输和调度开销必须小于排队收益。',
+    mechanism: 'P/D 分离把 prefill 和 decode 放到不同实例或资源池。Prefill 负责计算 prompt 的 KV，随后通过 connector/transport 把 KV 或必要状态交给 decode，并等待 decode 侧确认。节点内可能受益于 HCCS，跨节点通常还要看 RDMA、rank table、connector 和具体后端；HCCL 主要用于分布式通信/collective，不能简单等同于 KV transfer。',
+    formula: '配比判断要看三个量：平均输入长度决定 prefill 压力，平均输出长度和并发决定 decode 压力，KV 传输成本与失败恢复决定分离收益是否被网络吃掉。P/D 分离不是越细越好，传输、ACK、backpressure 和调度开销必须小于排队收益。',
     scenario: '在 GTS MaaS 中，企业知识库问答、代码仓库分析、agent 轨迹都会带来长 prompt。将 prefill 独立扩容，可以避免普通对话的 decode 延迟被长上下文请求拖高，也便于给不同业务设置资源池。',
     mistake: '常见误区是把 P/D 分离当成固定 4P4D 模板。真实配比要随输入输出长度、模型大小、网络带宽和 SLA 调整。另一个误区是忽略 KV 传输失败和重试，生产需要清晰的降级路径。',
     summary: 'P/D 分离是把两类不同瓶颈拆开治理：Prefill 追求吞吐和 TTFT，Decode 追求稳定 ITL。配比设计应由流量画像驱动。'
@@ -132,9 +132,9 @@ const topicContent = {
     slug: 't09-mtp-speculative.svg',
     steps: ['Draft/MTP', 'Propose Tokens', 'Target Verify', 'Accept/Reject', 'Faster Decode'],
     catch: 'MTP 的直觉是：既然 Decode 每步搬权重很贵，那就尝试一次多猜几个 token，再由主模型验收。',
-    intuition: '普通 Decode 像每次只走一步楼梯；投机推理像先让轻量助手试着跑几步，主模型再检查哪些步没有跑偏。猜对的 token 可以一次通过，猜错再回退，目标是在不改变输出分布的前提下减少主模型调用次数。',
-    mechanism: 'Speculative decoding 通常由 draft model、MTP head 或 n-gram 方法提出候选 token，目标模型并行验证这些候选。被接受的 token 直接进入输出，被拒绝的位置按目标模型结果继续生成。收益取决于候选质量、验证开销和 batch 调度。',
-    formula: '粗略收益来自接受长度：平均一次验证接受的 token 越多，主模型每 token 的权重搬运成本越低。但如果 draft 太慢、接受率低或验证扩展 batch 破坏调度，端到端 ITL 可能不降反升。',
+    intuition: '普通 Decode 像每次只走一步楼梯；投机推理像先让轻量助手试着跑几步，主模型再检查哪些步没有跑偏。在严格目标模型验证和接受/拒绝采样成立时，猜对的 token 可以一次通过，猜错再回退，目标是在保持目标分布的前提下减少主模型调用次数。',
+    mechanism: 'Speculative decoding 通常由 draft model、MTP head 或 n-gram 方法提出候选 token，目标模型并行验证这些候选。被接受的连续前缀进入输出，被拒绝的位置按目标模型结果继续生成。收益取决于候选质量、验证开销、候选长度、采样参数和 batch 调度。',
+    formula: '粗略收益来自平均连续接受长度，而不是单个逐 token 接受率的简单乘法。若 α 是逐 token 接受概率，候选长度为 k 时还要按拒绝位置、回退率和 verify step 统计实际 accepted tokens。draft 太慢、接受率低或验证扩展 batch 破坏调度时，端到端 ITL 可能不降反升。',
     scenario: 'GTS 关注 MTP，是因为 Decode 阶段常常 memory-bound。对 agent 循环和代码生成这类重复模式明显的请求，候选 token 接受率可能更高；对高随机采样或短回复，收益会变小。',
     mistake: '常见误区是认为投机推理必然提速。vLLM 文档也提醒不同数据集和采样参数下未必降低 ITL。另一个误区是只看 token/s，不验证输出一致性、显存增量和调度副作用。',
     summary: 'MTP/投机推理是用“多猜再验证”提高一次 Decode 搬运的产出。它适合 memory-bound 场景，但必须以接受率和端到端延迟来评估。'
@@ -163,12 +163,12 @@ const topicContent = {
   },
   T12: {
     slug: 't12-gateway-routing.svg',
-    steps: ['Request', 'Policy', 'Model Pool', 'Cluster Score', 'Route/Retry', 'Feedback'],
+    steps: ['Request Budget', 'Hard Filter', 'Normalized Score', 'Pre-stream Retry', 'Post-stream Fail', 'Feedback'],
     catch: '网关不是简单转发器，而是 MaaS 平台把业务意图翻译成资源决策的大脑。',
     intuition: '用户只说“我要调用某个模型”，平台还要判断去哪套集群、用哪个副本、是否限流、能不能降级、失败后是否重试。网关就是这层决策的入口。',
     mechanism: '智能路由通常结合静态策略和动态信号。静态策略包括租户权限、模型版本、地域、成本等级；动态信号包括队列长度、TTFT/ITL、错误率、显存水位和健康检查。请求进入后，网关选择目标集群，并把结果反馈给后续调度。',
-    formula: '可把路由评分理解为：可用性硬过滤 + SLA 匹配 + 实时负载评分 + 成本偏好。硬过滤先排除不可用或无权限目标，评分再在候选中选择最合适的资源。',
-    scenario: '在 GTS 跨集群服务中，同一个模型可能部署在多个资源池。网关需要在高峰期把请求导向健康集群，对低优先级流量降级，对长上下文请求选择 KV 空间更充足的池，对失败请求做有界重试。',
+    formula: '可把路由评分理解为：可用性硬过滤 + SLA 匹配 + 请求 token 预算 + 归一化实时负载评分 + 成本偏好。硬过滤先排除不可用、无权限或能力不匹配目标，评分再在候选中选择资源。评分输入要处理指标新鲜度、租户优先级、per-model capacity 和 circuit breaker。',
+    scenario: '在 GTS 跨集群服务中，同一个模型可能部署在多个资源池。网关需要在高峰期把请求导向健康集群，对低优先级流量降级，对长上下文请求选择 KV 空间更充足的池。失败处理要分清边界：入队前可重试，首 token 前可有预算重试，流式输出后通常只能显式失败或交给客户端重发。',
     mistake: '常见误区是把重试当万能药。推理请求成本高，盲目重试会放大拥塞。另一个误区是路由只看当前负载，不看请求长度和输出预算，导致长请求进入错误资源池。',
     summary: '网关路由连接业务 SLA 与底层资源状态。它越懂模型、队列和成本，MaaS 平台越能在高峰期保持稳定。'
   },
@@ -188,7 +188,7 @@ const topicContent = {
     steps: ['Metrics', 'Logs', 'Traces', 'Events', 'Dashboards', 'Action'],
     catch: '可观测性不是多画几张大屏，而是让一次慢请求能从网关追到 NPU、从现象追到原因。',
     intuition: '没有可观测性的系统像黑箱，出了问题只能猜。好的观测像给每个请求贴上追踪单：它经过哪里、等了多久、用了多少 KV、在哪个环节失败，都能还原。',
-    mechanism: 'Metrics 用于趋势和告警，Logs 用于解释离散事件，Traces 串起跨服务路径。推理平台还需要模型维度、租户维度、请求长度、输出长度、batch、KV 水位、调度队列和硬件利用率等领域指标。',
+    mechanism: 'Metrics 用于趋势和告警，Logs 用于解释离散事件，Traces 串起跨服务路径。推理平台还需要模型维度、租户维度、请求长度、输出长度、batch、KV 水位、调度队列和硬件利用率等领域指标。实时指标应控制低基数标签，请求级日志保留脱敏摘要，trace 采用采样策略，原始 prompt/response 默认不落库或必须加密脱敏。',
     formula: '排障链路可以按“入口耗时、排队耗时、prefill、decode、下游返回”拆段。每段都要有耗时、错误和资源标签。这样看到 TTFT 升高时，能判断是网关排队、prefill 饱和，还是模型加载/缓存异常。',
     scenario: 'GTS 做 MaaS 运维时，观测系统应支持按模型版本、集群、卡型、租户和请求类别下钻。一次容量事故后，团队能用同一套数据复盘：触发信号是什么，路由如何变化，降级是否生效。',
     mistake: '常见误区是指标很多但没有统一 request_id 或 trace_id。另一个误区是只监控 GPU/NPU 利用率，不监控用户侧 TTFT/ITL，导致资源看似忙，体验却不可解释。',
@@ -199,7 +199,7 @@ const topicContent = {
     steps: ['Tenant', 'Quota', 'Priority', 'Isolation', 'Accounting', 'Fairness'],
     catch: '多租户治理要解决的不是“谁能用”，而是“大家同时用时谁不该互相伤害”。',
     intuition: '一个共享集群像联合办公空间。没有配额，少数团队会占满会议室；没有隔离，一个团队的实验会影响生产会议；没有计量，谁用了多少也说不清。',
-    mechanism: '多租户治理包括身份和权限、资源配额、优先级队列、模型访问策略、并发和 token 预算、成本计量以及故障隔离。推理场景还要特别关注 KV Cache 和长上下文，因为它们会长时间占用显存。',
+    mechanism: '多租户治理包括身份和权限、资源配额、优先级队列、模型访问策略、并发和 token/KV 预算、成本计量以及故障隔离。推理场景还要特别关注 KV Cache 和长上下文，因为它们会长时间占用显存。策略需要从网关 admission control 传到 scheduler 队列，再回写 usage accounting 形成配额反馈。',
     formula: '公平性不是简单平均，而是按业务等级和承诺分配。可用资源先满足高优先级 SLO，再把剩余容量按配额或权重分给其他租户。超额使用可以排队、限速或转入低成本模型。',
     scenario: 'GTS 内部平台可以把生产、研发、压测、离线评估分成不同资源池或优先级。生产租户获得稳定 SLA，研发租户获得弹性额度，压测流量必须被标记，避免误伤线上容量判断。',
     mistake: '常见误区是只按 QPS 配额，不按 token、上下文和并发计量。另一个误区是权限与资源策略分离，导致用户能调用模型，却没有对应容量保障。',
@@ -224,7 +224,7 @@ const topicContent = {
     mechanism: '典型 MaaS 架构包括用户入口/API、鉴权计费、网关路由、调度和资源池、推理 runtime、模型仓库、配置中心、观测告警和运维发布。每层都有独立职责，但最终要围绕请求生命周期串起来。',
     formula: '请求链路可拆成：鉴权与策略检查，选择模型和资源池，进入队列和推理 runtime，流式返回 token，记录指标与用量。架构设计要保证每段都能限流、观测、重试或降级。',
     scenario: 'GTS 的 MaaS 平台价值在于把 910B 集群、自研算子、vLLM 适配、模型评测和网关治理组合成统一服务。对业务方来说，看到的是稳定 API；对平台方来说，背后是资源效率和 SLA 的持续平衡。',
-    mistake: '常见误区是把 MaaS 等同于 OpenAI-compatible API。API 只是入口，真正难的是容量、隔离、模型生命周期、流量治理和故障恢复。另一个误区是先做复杂功能，忽略 Phase 1 的学习和认知对齐。',
+    mistake: '常见误区是把 MaaS 等同于 OpenAI-compatible API。API 只是入口，真正难的是容量、隔离、模型生命周期、流量治理和故障恢复。另一个误区是先做复杂功能，忽略基础学习和认知对齐。',
     summary: 'MaaS 是模型、硬件、服务治理和运营能力的组合。理解全景架构，才能把单点优化放回平台价值链里。'
   },
   T18: {
@@ -323,7 +323,7 @@ const expertAddons = {
   },
   T08: {
     scene: '长文档问答把 prefill 队列打满，普通对话用户的 decode 也被拖慢。P/D 分离的目标是让长 prompt 的计算密集阶段和逐 token 的低延迟阶段分开治理。',
-    ascend: '在 910B 节点内做 4P4D，需要关注 KV/状态传输、HCCS/HCCL 带宽、prefill 与 decode 资源池隔离、故障重试和 CANN 后端对 disaggregated prefill 的支持。',
+    ascend: '在 910B 节点内做 4P4D，需要关注 KV/状态传输、HCCS 节点内互联、跨节点 RDMA/connector、prefill 与 decode 资源池隔离、故障重试和 CANN 后端对 disaggregated prefill 的支持。HCCL 可用于分布式通信，但不是 KV transfer 的唯一解释。',
     derivation: 'P/D 配比由输入长度分布、输出长度分布、并发和 KV 传输成本共同决定。若 MTP 把 decode 加速，系统瓶颈可能重新回到 prefill，需要动态调整 P:D 比例。',
     caseStudy: '症状：MTP 上线后 ITL 降低，但 TTFT 开始恶化。观察：decode 池空闲增加，prefill 队列积压。判断：原 4P4D 配比不再匹配新瓶颈。动作：提高 prefill 资源、调整长请求路由、限制超长 prompt。验证：同时看 TTFT、ITL 和池间水位。',
     boundary: 'P/D 分离不是固定架构模板。网络、KV 传输和故障处理成本大于排队收益时，单体调度反而更简单可靠。',
@@ -332,9 +332,9 @@ const expertAddons = {
   T09: {
     scene: '团队希望把 decode TPOT 从几十毫秒压到更低，但直接加卡收益有限。MTP 通过一次验证多个候选 token，提高每次主模型权重读取的产出。',
     ascend: '在 Ascend 上实现 MTP 要看候选生成、目标模型验证 kernel、采样和 batch 调度是否能高效融合。若 MTP head 或 draft 路径触发低效 fallback，收益会被吃掉。',
-    derivation: '近似收益由平均接受 token 数决定：接受率越高，主模型每输出 token 的有效 decode 步数越少。但候选长度越长，验证开销、显存和调度复杂度也越高。',
+    derivation: '近似收益由每个 verify step 的平均连续接受 token 数决定：接受前缀越长，主模型每输出 token 的有效 decode 步数越少。但逐 token 接受率不能直接乘以候选长度当作平均收益；候选越长，验证开销、显存和调度复杂度也越高。',
     caseStudy: '症状：离线 benchmark 提速，线上 ITL 改善不明显。观察：真实采样温度更高、接受率下降、batch 被候选长度拉宽。判断：实验流量与生产流量分布不一致。动作：按业务域训练/选择 MTP、分场景开关。验证：记录接受率、回退率和 ITL。',
-    boundary: 'Speculative decoding 保证分布一致的前提依赖正确验证流程。为了速度跳过拒绝采样或改输出分布，会把性能优化变成质量风险。',
+    boundary: 'Speculative decoding 保证分布一致的前提依赖目标模型验证、接受/拒绝采样和采样参数严格实现标准算法。MTP head、n-gram 或工程近似路径都需要单独验证质量一致性；为了速度跳过拒绝采样或改输出分布，会把性能优化变成质量风险。',
     questions: ['接受率为什么比候选长度更能决定收益？', '什么业务流量更适合 MTP？', '如何设计 MTP 开关的线上灰度指标？']
   },
   T10: {
@@ -374,13 +374,13 @@ const expertAddons = {
     ascend: 'NPU profiling、CANN kernel timeline、HCCL 通信和应用日志需要通过 request_id、model_id、cluster_id 关联。否则硬件侧看到慢 kernel，服务侧不知道影响哪个租户。',
     derivation: '排障分段：入口耗时、策略耗时、队列等待、prefill、decode、传输、客户端断开。每段至少记录耗时、错误、资源池、模型版本和请求长度。',
     caseStudy: '症状：某模型 P99 TTFT 突然升高。观察：网关无异常，prefill 池队列升高，NPU HBM 水位正常。判断：长 prompt 流量突增而非硬件故障。动作：按长度路由和限流。验证：TTFT 分桶恢复。',
-    boundary: '大屏不是可观测性。没有可操作标签、采样策略和保留策略，数据越多排障越慢。专家关注从告警到动作的闭环。',
+    boundary: '大屏不是可观测性。没有可操作标签、采样策略、隐私脱敏和保留策略，数据越多排障越慢。高基数 request_id、prompt 摘要和 token 明细要分层治理，专家关注从告警到动作的闭环。',
     questions: ['一次请求至少需要哪些 trace 标签？', '为什么 NPU 利用率高不能直接说明系统健康？', 'ClickHouse 聚合指标和原始日志各适合解决什么问题？']
   },
   T15: {
     scene: '多个 PDU 共享千卡资源：生产希望稳定，研发希望弹性，压测希望冲高。多租户治理要把贡献、保底、弹性、计量和隔离变成规则。',
     ascend: '在昇腾资源池中，租户策略要落到具体卡型、模型、上下文长度、KV 配额和优先级队列。不同 CANN/模型适配版本也可能成为租户可用性的边界。',
-    derivation: '可用容量先扣除系统预留和生产保底，再进入弹性池。计量不只算请求数，还要算输入 token、输出 token、占用时长、卡型权重和长上下文系数。',
+    derivation: '可用容量先扣除系统预留和生产保底，再进入弹性池。计量不只算请求数，还要算输入 token、输出 token、KV block、占用时长、卡型权重和长上下文系数。admission control 与 scheduler 队列要共用这套预算口径。',
     caseStudy: '症状：某大租户消耗大量长上下文，其他租户 TTFT 变差。观察：QPS 配额未超，但 token 和 KV 占用超预期。判断：计量维度错误。动作：引入 token/KV 预算与权重公平队列。验证：租户间 P95 差距收敛。',
     boundary: '公平不是平均。高优先级生产租户需要保底，低优先级研发应使用弹性容量；计费和策略要透明，否则平台信任会下降。',
     questions: ['为什么多租户要按 token 与上下文计量？', '保底配额和弹性池如何共存？', '哪些隔离策略能防止压测误伤生产？']
@@ -408,6 +408,180 @@ const expertAddons = {
     caseStudy: '症状：有人质疑“外部 API 已经可用，为什么还要自建”。观察：外部 API 无法满足数据域、审计、私有模型、成本和跨 PDU 治理。判断：竞争力应从推理速度叙事升级为企业 AI Infra。动作：展示全栈治理能力和域内优化。验证：看合规覆盖、成本和业务接入速度。',
     boundary: '硬件升级不是线性替换。代际选择必须考虑模型趋势、供应、软件生态、迁移成本和团队学习曲线。',
     questions: ['内部 MaaS 平台相对外部 API 的核心价值是什么？', '为什么硬件代际策略必须跟模型结构趋势一起判断？', '如何避免把平台竞争力叙事局限在单卡性能？']
+  }
+};
+
+const topicOverrides = {
+  T01: {
+    key_points: [
+      'Arithmetic Intensity（算术强度）= FLOPs / Bytes，是判断瓶颈的核心指标',
+      'Prefill阶段：大矩阵乘（[seq_len, d] × [d, d]），通常更接近compute-bound，算力是主要瓶颈',
+      'Decode阶段：单token路径常受权重读取和KV读取限制，但有效读字节取决于MoE、量化、TP和kernel fusion',
+      'Roofline Model：用目标硬件的算力(TFLOPS)和HBM带宽(TB/s)画出拐点，低于拐点就是在等数据搬运',
+      '一句话：Decode优化要先确认是否memory-bound，再决定权重复用、batch、MTP或量化是否能带来端到端收益'
+    ],
+    real_world_connection: 'MTP在特定模型、采样参数和流量画像下可能显著提升并发，因为一次验证可产出多个token；通用容量规划必须以接受率、ITL和tokens/s实测为准'
+  },
+  T02: {
+    key_points: [
+      'KV Cache公式：2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element',
+      'GQA（Grouped Query Attention）：KV头数少于Q头数，KV Cache可缩减4-8倍',
+      '显存总预算 = 模型权重 + KV Cache + 激活值 + runtime/框架/通信开销',
+      '单卡容量规划要区分总KV与per-rank KV，TP下能否分摊取决于KV head分片和后端实现',
+      '长上下文场景KV Cache近似随seq_len线性增长，seq_len从4K到32K时KV约增长8倍'
+    ],
+    real_world_connection: '评估MiniMax、Qwen等模型在910B3/B4上的并发时，需要把权重、KV、block碎片和运行时预留放到同一张单卡预算表里'
+  },
+  T03: {
+    real_world_connection: '评估Qwen3.5-35B-A3B用于快速Agent循环时，核心判断是总权重、KV和运行时预留能否放下；FP16单卡910B3/910B4都不应视为可直接承载，量化或多卡后才讨论部署可行性'
+  },
+  T05: {
+    key_points: [
+      'CANN链路不是固定串行层：应用/框架可走图执行或eager路径，经由ACL/Runtime调用底层能力',
+      '算子实现可能来自内置算子、TBE、Ascend C或自定义kernel，TBE/Ascend C更像开发与编译路径',
+      'Ascend C编程模型：直接控制数据搬运(GM→UB)和计算流水线',
+      '核心优化：Tiling策略、Double Buffer、Kernel Fusion和数据布局',
+      '管理者视角：理解算子优化ROI——哪些算子在Attention/FFN/量化/采样主路径上、优化空间有多大'
+    ]
+  },
+  T07: {
+    key_points: [
+      'vLLM Ascend后端：把CUDA后端假设映射到torch-npu/ACL/CANN、Ascend内存布局和算子能力',
+      'GTS高性能算子替换：在Attention/FFN热点路径替换默认实现',
+      '性能差异：昇腾 vs NVIDIA的推理性能差距客观存在，通过算子优化可缩小',
+      '自研调度器/网关：在vLLM之上的服务化层，解决多集群、多租户、流量治理',
+      '自研 vs 开源边界：vLLM核心跟社区，GTS算子和调度网关层自研，两者解耦'
+    ],
+    real_world_connection: '全栈 = vLLM(社区) + GTS算子(自研) + 调度器/网关(自研) + 可观测性/计量链路(自研或内部平台能力)'
+  },
+  T08: {
+    key_points: [
+      '分离动机：Prefill(compute-bound)和Decode(memory-bound)混合会互相干扰',
+      '4P+4D架构：8卡节点中4张做Prefill、4张做Decode，是一种需按流量画像校准的配比',
+      'KV/状态传输：节点内可关注HCCS，跨节点需看RDMA/connector/rank table，HCCL不等同于KV transfer',
+      '容量影响：分离后收益来自TTFT、ITL和水位反馈的综合改善，不是固定拓扑天然提升',
+      'MTP上线后Decode可能加速，瓶颈可能回到Prefill——需重新平衡P/D比例'
+    ],
+    real_world_connection: '若内部基线显示P90 TPOT约42ms，MTP目标收益也必须和具体模型、采样参数、接受率、P/D配比及压测流量绑定，不能作为通用结论'
+  },
+  T09: {
+    why: '重要性能优化方向之一；是否能把容量从某个内部基线提升到更高区间，取决于模型、采样参数、接受率、验证开销和调度形态',
+    key_points: [
+      'Speculative Decoding原理：draft/MTP/n-gram提出候选 → 目标模型一次前向并行验证 → 严格接受/拒绝采样时可保持目标分布',
+      '两种形态：独立Draft Model vs 模型原生MTP Head',
+      '收益由平均连续接受长度决定；逐token接受率α不能直接乘以候选长度当作平均接受token数',
+      '域内MTP头可能提升特定业务域接受率，但需要按采样温度、任务类型和线上流量分桶验证',
+      'Batch Size影响：小batch收益可能更明显，大batch下验证开销和调度副作用会放大',
+      '性能验证：固定并发对比MTP开/关的P50/P90 TPOT、ITL、tokens/s、accepted tokens/verify step和质量一致性'
+    ],
+    real_world_connection: 'P90 TPOT或容量提升数字只能作为某内部压测基线/目标假设，必须同时标注模型、候选长度、采样参数、P/D配比和验收指标'
+  },
+  T10: {
+    key_points: [
+      '量化本质：更少bit表示权重或KV，减少显存和部分HBM搬运量，代价是精度/适配风险',
+      '常见方案：W8A8、W4A16、GPTQ/AWQ训后量化，以及FP8/INT8/INT4/FP4等依赖后端支持的格式',
+      '权重量化可能降低decode读权重压力，但是否提速取决于低精度kernel、反量化开销、KV读取、采样、通信和batch形态',
+      '质量影响：W8A8通常风险较小，W4A16/INT4/FP4在复杂推理、工具调用或长上下文中可能明显退化',
+      '硬件分级：B3/B4都可按模型大小、SLA、kernel成熟度和业务评测选择精度，不能硬编码为B3只用FP16、B4只用量化',
+      '量化不是免费午餐，关键业务慎用激进量化'
+    ]
+  },
+  T11: {
+    key_points: [
+      'TTFT：从请求进入到首token返回，通常受网关排队、调度等待、prefill和首token传输共同影响',
+      'ITL/TPOT：后续token生成间隔，主要反映decode节奏、调度和流式发送',
+      'tokens/s/TPS：需区分单请求生成速度、实例吞吐和集群吞吐，不能混用',
+      'Throughput：系统级吞吐量，衡量实例或集群整体产能',
+      'P50/P95/P99百分位延迟比平均值更有意义',
+      '核心矛盾：提高batch size可提升Throughput但可能增加单请求TPOT/ITL'
+    ],
+    real_world_connection: 'TPOT/ITL基线是MTP效果验证的关键观测项，但具体数字必须和模型、流量画像和压测条件绑定'
+  },
+  T12: {
+    key_points: [
+      '统一网关职责：请求入口、协议转换(OpenAI兼容)、认证鉴权、路由、SSE流式输出',
+      'One-shot routing约束：集群间隔离时，流式输出后的透明fallback边界很窄',
+      '集群水位上报：active_requests/queued/kv_cache_pct/avg_latency等指标需处理新鲜度和可信度',
+      '选路演进：加权最少连接+水位 → 请求分级差异化 → 基于历史数据的预测式路由',
+      '硬阈值保护：排队超限、KV Cache高水位、能力不匹配或熔断状态应直接移除候选',
+      '评分公式只能作为示例框架：硬过滤 + 归一化负载 + token预算 + 租户优先级 + circuit breaker'
+    ],
+    real_world_connection: '内部平台示例：基础限流后，水位感知选路可作为下一步治理能力；失败重试要区分入队前、首token前和流式输出后三个边界'
+  },
+  T13: {
+    real_world_connection: '内部平台示例：可先落地基础限流和请求分级，再逐步扩展到降级引擎与预测策略，避免和学习App自身Phase编号混淆'
+  },
+  T14: {
+    why: '不能观测就不能优化；需理解从指标、日志、链路到隐私和成本控制的完整设计思路',
+    key_points: [
+      'AI推理可观测性 vs 传统微服务：请求持续秒到分钟级、资源消耗差异10倍以上、需token粒度计量',
+      '双通道：实时指标看低基数趋势和告警，批处理/聚合支撑计费报表和复盘',
+      '三级视图：集群鸟瞰 → TOP用户/token消耗 → 脱敏后的单请求排查',
+      '告警：P99超阈值、单集群KV高水位、心跳超时、错误率突增等需绑定动作',
+      '数据治理：控制高基数标签、trace采样、prompt/response脱敏或不落库、请求级日志保留周期'
+    ],
+    real_world_connection: '内部平台示例：数据采集和ClickHouse处理层可作为观测能力的一部分，但应用层看板必须同时关注隐私、成本和查询性能'
+  },
+  T16: {
+    key_points: [
+      '声明式模型注册表：新模型尽量通过配置变更进入评估/灰度流程，而不是散落手工步骤',
+      '模型分级：可按能力、成本、风险和适配成熟度划分，而不是固定绑定某个模型家族',
+      '灰度发布：小范围资源池灰度 → 观察质量/性能/错误率 → 扩大集群',
+      '上线前三重评估：质量benchmark + 安全对齐 + 性能TPOT/吞吐',
+      '蒸馏模型安全风险：社区蒸馏模型可能对齐缺失'
+    ]
+  },
+  T17: {
+    key_points: [
+      '七层架构：硬件 → 算子 → 推理引擎 → 网关 → 可观测性 → 治理 → 业务应用',
+      '关键接口：引擎暴露OpenAI兼容API，网关做协议统一，可观测性旁路不侵入主链路',
+      '数据流：用户请求 → 网关(鉴权+路由) → 集群(推理) → 流式响应 → 旁路日志/指标',
+      '控制流：运维 → 模型注册表/配置中心 → 集群配置同步 → 灰度发布',
+      '物理拓扑、P/D逻辑拓扑和统一网关路由需要分别建模，不能把示例拓扑当成固定模板'
+    ]
+  },
+  T18: {
+    key_points: [
+      '核心威胁：外部API能力增强，内部竞对也可能部署同款开源模型',
+      '不可替代价值：统一AI基础设施层——网关、调度、治理、可观测性、安全合规',
+      '练兵场价值：千卡集群管理经验是稀缺能力',
+      '域内MTP头的接受率或收益数字应作为特定实验结果记录，不能包装成通用能力',
+      '叙事升级：从“自建推理系统”到“企业AI基础设施统一管理平台”',
+      '硬件代际：A2→A3→A5，聚焦平台和业务集成深度'
+    ]
+  },
+  T19: {
+    key_points: [
+      '标准Attention瓶颈：Prefill注意力计算接近O(n²)，KV Cache随上下文和并发线性增长，1M上下文时KV账单可能很高',
+      'MHA → MQA → GQA → MLA演进线：减少KV头数/压缩KV维度来缩小Cache',
+      '线性注意力本质：用O(n)复杂度或固定状态替代完整softmax历史，新token更新状态而不是完整回看',
+      '线性注意力的代价：表达能力通常弱于softmax attention，精确检索和远距离依赖捕捉能力需要验证',
+      '趋势判断：混合架构常用线性/压缩attention省资源，少数full attention或检索机制保精度',
+      '多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax M2.5更接近MoE + Lightning Attention/混合注意力路线'
+    ]
+  },
+  T20: {
+    key_points: [
+      'DeltaNet原理：维护固定大小的记忆矩阵，每个新token通过delta规则更新矩阵，不存储完整KV Cache',
+      'Gated DeltaNet：加入Mamba风格门控机制，学习何时更新/保留记忆，类似LSTM的遗忘/记忆能力',
+      '3:1混合比例：Qwen3.6-27B的64层 = 16个块 × (3层Gated DeltaNet + 1层Gated Attention)',
+      '头数配置：DeltaNet层48个V头/16个QK头，Gated Attention层24个Q头/仅4个KV头，显著压缩传统KV Cache',
+      'DeltaNet层不产生传统KV Cache（固定状态矩阵），只有部分full attention层产生传统KV Cache',
+      'Qwen3.6模型侧具备MTP相关设计信号；能否在vLLM Ascend中高效用于speculative decoding，需要按版本、量化格式和kernel支持验证'
+    ],
+    real_world_connection: 'Qwen3.6-27B(dense)若采用FP8等低精度，权重量级约27GB，910B3单卡具备放置窗口；生产可行性仍需按上下文、KV/状态、runtime buffer、Ascend后端和吞吐SLA实测确认'
+  },
+  T21: {
+    why: 'DeepSeek V4代表压缩+稀疏的长上下文路线；其收益来自特定报告设定和实现细节，平台需要学习思路而不是照搬数字',
+    key_points: [
+      'CSA两步压缩：先做KV压缩（如报告设定中的softmax-gated pooling），再用Lightning Indexer做top-k稀疏选择 + sliding window保留近邻',
+      'HCA超压缩：按特定设计粒度压缩到极短序列后做dense attention，提供廉价全局视野',
+      'CSA/HCA交替排列：CSA提供精确稀疏检索，HCA提供模糊全局概览，各层职责不同',
+      '与V3 MLA的对比：V3用latent压缩KV，V4用压缩+稀疏+超压缩，收益依赖learned compressor质量和层型配置',
+      '低精度深度融入架构：Lightning Indexer使用FP4，MoE expert权重采用FP4 QAT等设计需按公开报告语境理解',
+      '对推理框架的挑战：CSA/HCA非标准attention，vLLM/SGLang/昇腾适配需按版本和kernel计划持续评估'
+    ],
+    real_world_connection: 'V4-Pro(1.6T)/Flash(284B)暂时不会在910B3上跑；CSA/HCA设计思想可能影响后续开源模型，需提前评估vLLM Ascend适配难度和业务长上下文需求'
   }
 };
 
@@ -659,7 +833,7 @@ function makeDiagram(topic, content) {
       ${box(80, 150, 132, 58, '原始 KV', '1M context', { stroke: '#60a5fa' })}
       ${arrow(212, 180, 330, 152)}${arrow(212, 180, 330, 264)}
       ${box(330, 122, 190, 64, 'CSA', '4x 压缩 + Top-K 索引', { stroke: '#5eead4' })}
-      ${box(330, 236, 190, 64, 'HCA', '128x 压缩 + dense', { stroke: '#facc15' })}
+      ${box(330, 236, 190, 64, 'HCA', '高倍率压缩 + dense', { stroke: '#facc15' })}
       ${arrow(520, 154, 680, 154)}${arrow(520, 268, 680, 268)}
       ${box(680, 126, 190, 56, '精确稀疏检索', '找相关历史', { stroke: '#34d399' })}
       ${box(680, 240, 190, 56, '低成本全局视野', '看压缩全局', { stroke: '#facc15' })}
@@ -667,26 +841,24 @@ function makeDiagram(topic, content) {
       ${text(544, 354, 'Sliding Window：最近 token 保持局部细节，不被过度压缩', { anchor: 'middle', color: '#fecaca', weight: 800 })}
     `, '读图：DeepSeek V4 用压缩、索引和滑动窗口组合治理超长上下文。'),
     T04: () => diagramShell(topic, content, `
-      ${box(78, 146, 230, 158, '910B3 资源池', '64GB HBM / 长上下文 / 高并发', { stroke: '#5eead4' })}
-      ${rect(104, 224, 44, 58, { fill: '#172554', stroke: '#60a5fa' })}${rect(160, 188, 44, 94, { fill: '#064e3b', stroke: '#34d399' })}${rect(216, 246, 44, 36, { fill: '#422006', stroke: '#facc15' })}
-      ${box(374, 146, 230, 158, '910B4 资源池', '32GB HBM / 中小模型 / 成本优先', { stroke: '#60a5fa' })}
-      ${rect(400, 242, 44, 40, { fill: '#172554', stroke: '#60a5fa' })}${rect(456, 214, 44, 68, { fill: '#064e3b', stroke: '#34d399' })}${rect(512, 254, 44, 28, { fill: '#422006', stroke: '#facc15' })}
-      ${box(684, 162, 190, 52, '权重能否放下', '', { stroke: '#facc15' })}
-      ${box(684, 232, 190, 52, 'KV 是否够用', '', { stroke: '#34d399' })}
-      ${arrow(604, 224, 684, 188)}${arrow(604, 224, 684, 258)}
-    `, '读图：硬件分级要同时看容量、带宽、模型画像和业务成本。'),
+      ${box(74, 142, 210, 142, '910B3 资源池', '容量余量 / 长上下文', { stroke: '#5eead4' })}
+      ${box(328, 142, 210, 142, '910B4 资源池', '成本优先 / 轻量服务', { stroke: '#60a5fa' })}
+      ${['权重+KV', 'HBM带宽', '互联/故障域', 'CANN/kernel', 'SLA/成本'].map((v, i) => box(620, 112 + i * 46, 210, 34, v, '', { stroke: ['#facc15', '#34d399', '#38bdf8', '#a78bfa', '#fb7185'][i] })).join('')}
+      ${arrow(284, 213, 620, 129)}${arrow(538, 213, 620, 175)}
+      ${arrow(538, 213, 620, 221)}${arrow(538, 213, 620, 267)}${arrow(284, 213, 620, 313)}
+      ${text(306, 330, '分级不是只看 64GB vs 32GB：要用实测水位和SLA校准', { color: '#cbd5e1', weight: 800 })}
+    `, '读图：硬件分级要同时看容量、带宽、互联、软件栈和业务成本。'),
     T05: () => diagramShell(topic, content, `
-      ${['AI Core: Cube / Vector / Scalar', 'Runtime', 'TBE / Ascend C 自研算子', 'GE 图优化', 'vLLM / PyTorch / 应用'].map((v, i) => {
-        const w = 620 - i * 68;
-        const x = 170 + i * 34;
-        const y = 292 - i * 42;
-        const colors = ['#5eead4', '#38bdf8', '#facc15', '#60a5fa', '#a78bfa'];
-        return `${rect(x, y, w, 34, { stroke: colors[i], fill: '#101b2d' })}${text(480, y + 23, v, { anchor: 'middle', color: '#f8fafc', weight: 800 })}`;
-      }).join('')}
-      ${box(72, 150, 142, 70, 'GM → UB', '少搬/复用', { stroke: '#38bdf8' })}
-      ${box(746, 150, 142, 70, 'Tiling', '流水线', { stroke: '#facc15' })}
-      ${arrow(214, 186, 318, 272)}${arrow(746, 186, 642, 272)}
-    `, '读图：自研算子价值来自贴合 Ascend 存储层级和执行流水线。'),
+      ${box(74, 138, 176, 68, '应用/框架', 'vLLM / PyTorch', { stroke: '#a78bfa' })}
+      ${box(300, 116, 178, 52, '图执行 GE', '可选路径', { stroke: '#60a5fa' })}
+      ${box(300, 188, 178, 52, 'Eager / ACL', 'Runtime 调用', { stroke: '#38bdf8' })}
+      ${box(540, 138, 160, 68, '算子实现', '内置 / TBE / Ascend C', { stroke: '#facc15' })}
+      ${box(744, 138, 140, 68, 'AI Core', 'Cube / Vector', { stroke: '#5eead4' })}
+      ${arrow(250, 172, 300, 142)}${arrow(250, 172, 300, 214)}${arrow(478, 142, 540, 160)}${arrow(478, 214, 540, 184)}${arrow(700, 172, 744, 172)}
+      ${box(124, 286, 180, 52, 'GM → UB', '少搬/复用', { stroke: '#38bdf8' })}
+      ${box(390, 286, 180, 52, 'Tiling/Fusion', '流水线', { stroke: '#facc15' })}
+      ${box(656, 286, 180, 52, 'Profiling ROI', '主路径优先', { stroke: '#34d399' })}
+    `, '读图：CANN 是多路径执行与算子实现组合，不是固定 GE→TBE 串行链。'),
     T06: () => diagramShell(topic, content, `
       ${box(58, 150, 150, 74, '请求队列', '不同长度', { stroke: '#60a5fa' })}
       ${arrow(208, 187, 290, 187)}
@@ -712,11 +884,14 @@ function makeDiagram(topic, content) {
       ${box(72, 148, 250, 120, 'Prefill Pool', '长 prompt / 高并行 / TTFT', { stroke: '#5eead4' })}
       ${box(638, 148, 250, 120, 'Decode Pool', '逐 token / 低 ITL / 稳定节奏', { stroke: '#60a5fa' })}
       ${arrow(322, 208, 638, 208, { color: '#facc15', width: 4 })}
-      ${text(480, 192, 'KV / 状态传输', { anchor: 'middle', color: '#facc15', weight: 900 })}
+      ${text(480, 190, 'KV connector / transport', { anchor: 'middle', color: '#facc15', weight: 900 })}
+      ${arrow(638, 236, 322, 236, { color: '#34d399', width: 2, dash: '6 6' })}
+      ${text(480, 258, 'Decode ACK + backpressure', { anchor: 'middle', color: '#bbf7d0', size: 13, weight: 800 })}
       ${[0, 1, 2, 3].map((i) => rect(104 + i * 46, 226, 34, 18, { fill: '#064e3b', stroke: '#34d399' })).join('')}
       ${[0, 1, 2, 3].map((i) => rect(672 + i * 46, 226, 34, 18, { fill: '#172554', stroke: '#60a5fa' })).join('')}
-      ${box(382, 282, 196, 52, '4P4D 是配比问题', '由流量画像决定', { stroke: '#38bdf8' })}
-    `, '读图：P/D 分离把 prefill 和 decode 两种瓶颈拆开治理。'),
+      ${box(326, 304, 150, 46, '水位反馈', 'queue / KV', { stroke: '#38bdf8' })}
+      ${box(500, 304, 150, 46, 'P:D 重平衡', '由流量画像决定', { stroke: '#a78bfa' })}
+    `, '读图：P/D 分离难点在 KV 传输、ACK、反压和动态配比闭环。'),
     T09: () => diagramShell(topic, content, `
       ${box(80, 154, 170, 66, 'MTP / Draft', '一次猜多步', { stroke: '#5eead4' })}
       ${arrow(250, 187, 380, 187)}
@@ -752,11 +927,13 @@ function makeDiagram(topic, content) {
       ${arrow(200, 209, 300, 209)}
       ${rect(300, 132, 240, 156, { stroke: '#5eead4' })}
       ${text(420, 162, '路由评分', { anchor: 'middle', weight: 900, color: '#f8fafc' })}
-      ${['权限硬过滤', 'SLA 匹配', '实时负载', '成本偏好'].map((v, i) => text(330, 192 + i * 26, `• ${v}`, { color: '#cbd5e1', weight: 700 })).join('')}
+      ${['硬过滤/能力', 'token预算', '归一化负载', '指标新鲜度'].map((v, i) => text(330, 192 + i * 26, `• ${v}`, { color: '#cbd5e1', weight: 700 })).join('')}
       ${arrow(540, 209, 640, 172)}${arrow(540, 209, 640, 246)}
       ${box(640, 136, 220, 58, 'Cluster A', '健康 / 低队列', { stroke: '#34d399' })}
       ${box(640, 224, 220, 58, 'Cluster B', '高水位 / 降权', { stroke: '#fb7185' })}
-    `, '读图：网关把业务意图和实时资源状态合成路由决策。'),
+      ${box(224, 318, 210, 40, '首 token 前：预算重试', '', { stroke: '#facc15' })}
+      ${box(526, 318, 230, 40, '流式输出后：不透明重试', '', { stroke: '#fb7185' })}
+    `, '读图：网关路由要同时处理请求画像、指标新鲜度和流式重试边界。'),
     T13: () => diagramShell(topic, content, `
       ${rect(140, 130, 680, 50, { stroke: '#60a5fa' })}${text(480, 162, '入口流量', { anchor: 'middle', weight: 900 })}
       ${rect(190, 198, 580, 46, { stroke: '#5eead4' })}${text(480, 228, '配额 / 限流', { anchor: 'middle', weight: 900 })}
@@ -771,16 +948,23 @@ function makeDiagram(topic, content) {
       ${line(324, 266, 436, 232)}${line(524, 232, 636, 266)}${line(334, 292, 626, 292)}
       ${box(380, 128, 200, 44, '统一 request_id', '串起一次慢请求', { stroke: '#38bdf8' })}
       ${arrow(480, 172, 480, 178)}
-      ${box(378, 326, 204, 44, 'Dashboard + Alert', '证据驱动优化', { stroke: '#a78bfa' })}
-    `, '读图：可观测性要把指标、日志和链路合成排障闭环。'),
+      ${box(120, 332, 190, 38, '低基数指标', '告警/趋势', { stroke: '#34d399' })}
+      ${box(382, 332, 196, 38, '脱敏请求日志', '排障/审计', { stroke: '#facc15' })}
+      ${box(650, 332, 190, 38, 'Trace采样', '成本可控', { stroke: '#a78bfa' })}
+    `, '读图：可观测性要同时闭环排障、隐私和存储成本。'),
     T15: () => diagramShell(topic, content, `
-      ${['生产租户', '研发租户', '压测租户'].map((v, i) => {
-        const y = 150 + i * 70;
-        const w = [390, 260, 150][i];
-        return `${text(90, y + 28, v, { weight: 900 })}${rect(210, y, 460, 38, { stroke: '#334155', fill: '#0f172a' })}${rect(210, y, w, 38, { stroke: ['#34d399', '#60a5fa', '#facc15'][i], fill: ['#064e3b', '#172554', '#422006'][i] })}${text(690, y + 26, ['高优先级', '弹性额度', '隔离/限速'][i], { color: '#cbd5e1' })}`;
-      }).join('')}
-      ${box(310, 336, 340, 38, '计量维度：QPS + tokens + 上下文 + 并发', '', { stroke: '#5eead4' })}
-    `, '读图：多租户治理让共享资源可承诺、可计量、可隔离。'),
+      ${box(72, 148, 150, 54, 'Tenant Policy', '保底/优先级', { stroke: '#60a5fa' })}
+      ${arrow(222, 175, 310, 175)}
+      ${box(310, 148, 166, 54, 'Token/KV Budget', '长度/并发', { stroke: '#5eead4' })}
+      ${arrow(476, 175, 564, 175)}
+      ${box(564, 148, 160, 54, 'Admission', '准入控制', { stroke: '#facc15' })}
+      ${arrow(644, 202, 644, 254)}
+      ${box(564, 254, 160, 54, 'Scheduler Queue', 'WFQ/优先级', { stroke: '#38bdf8' })}
+      ${arrow(564, 281, 476, 281)}
+      ${box(310, 254, 166, 54, 'Usage Accounting', 'token/KV/卡时', { stroke: '#a78bfa' })}
+      ${arrow(310, 281, 222, 202)}
+      ${text(480, 348, '治理闭环：策略 → 预算 → 准入 → 调度 → 计量 → 配额反馈', { anchor: 'middle', color: '#cbd5e1', weight: 800 })}
+    `, '读图：多租户治理是 token/KV 预算与调度器准入的闭环。'),
     T16: () => diagramShell(topic, content, `
       ${[['Register',480,140],['Evaluate',650,206],['Deploy',590,318],['Monitor',370,318],['Rollback',310,206]].map(([v,x,y]) => box(x - 64, y - 26, 128, 52, v, '', { stroke: '#5eead4' })).join('')}
       ${arrow(544, 154, 600, 190)}${arrow(658, 232, 616, 292)}${arrow(526, 318, 434, 318)}${arrow(370, 292, 314, 232)}${arrow(374, 190, 436, 154)}
@@ -834,6 +1018,16 @@ for (const topic of seed.topics) {
   const content = topicContent[topic.id];
   if (!content) {
     throw new Error(`Missing expanded content for ${topic.id}`);
+  }
+  const override = topicOverrides[topic.id];
+  if (override?.why) {
+    topic.why = override.why;
+  }
+  if (override?.key_points) {
+    topic.key_points = override.key_points;
+  }
+  if (override?.real_world_connection) {
+    topic.real_world_connection = override.real_world_connection;
   }
   topic.body_md = topicBody(topic, content);
   if (topic.id === 'T04') {

@@ -29,9 +29,15 @@
 <text x="480" y="146" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">统一 request_id</text>
 <text x="480" y="168" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">串起一次慢请求</text>
       <path d="M 480 172 L 480 178" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
-      <rect x="378" y="326" width="204" height="44" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
-<text x="480" y="344" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Dashboard + Alert</text>
-<text x="480" y="366" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">证据驱动优化</text>
+      <rect x="120" y="332" width="190" height="38" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
+<text x="215" y="347" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">低基数指标</text>
+<text x="215" y="369" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">告警/趋势</text>
+      <rect x="382" y="332" width="196" height="38" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="480" y="347" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">脱敏请求日志</text>
+<text x="480" y="369" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">排障/审计</text>
+      <rect x="650" y="332" width="190" height="38" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="745" y="347" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Trace采样</text>
+<text x="745" y="369" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">成本可控</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：可观测性要把指标、日志和链路合成排障闭环。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：可观测性要同时闭环排障、隐私和存储成本。</text>
 </svg>

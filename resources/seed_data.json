@@ -37,13 +37,13 @@
       "why": "所有推理优化决策的根基。理解了这个，MTP为什么有效、batching为什么重要、P/D分离为什么必要，全部可以自行推导",
       "key_points": [
         "Arithmetic Intensity（算术强度）= FLOPs / Bytes，是判断瓶颈的核心指标",
-        "Prefill阶段：大矩阵乘（[seq_len, d] × [d, d]），compute-bound，算力是瓶颈",
-        "Decode阶段：每步只处理1个token，但需要把全部模型权重从HBM搬一遍，memory-bound，带宽是瓶颈",
-        "Roofline Model：用910B3的算力(TFLOPS)和HBM带宽(TB/s)画出拐点，低于拐点就是在等数据搬运",
-        "一句话：Decode阶段NPU大部分时间在搬数据而不是在算，所有优化本质上都是在提高每次搬运的产出"
+        "Prefill阶段：大矩阵乘（[seq_len, d] × [d, d]），通常更接近compute-bound，算力是主要瓶颈",
+        "Decode阶段：单token路径常受权重读取和KV读取限制，但有效读字节取决于MoE、量化、TP和kernel fusion",
+        "Roofline Model：用目标硬件的算力(TFLOPS)和HBM带宽(TB/s)画出拐点，低于拐点就是在等数据搬运",
+        "一句话：Decode优化要先确认是否memory-bound，再决定权重复用、batch、MTP或量化是否能带来端到端收益"
       ],
-      "real_world_connection": "MTP能把并发从1200提升到3000+，因为一次权重搬运产出多个token，直接提升memory-bound场景的效率",
-      "body_md": "## 一句话抓手\n\n> 推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。\n\n![Compute-bound vs Memory-bound：推理的第一性原理 图解](learning-asset://topic-diagrams/t01-roofline.svg)\n\n## 问题场景\n\n线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。\n\n## 第一性原理\n\n可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。\n\n## 机制拆解\n\nArithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满，Decode 的单 token GEMV 和 KV 读取则经常被带宽限制。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。\n\n## 推导示例\n\n先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上；若高于拐点，再优先看矩阵核与并行度。\n\n1. FLOPs\n2. Bytes\n3. Arithmetic Intensity\n4. Roofline 判断\n5. 优化方向\n\n## 公式/判断\n\n判断路径是：估算 FLOPs、估算需要读写的权重和 KV 字节数，再与硬件的峰值算力和 HBM 带宽相除。Roofline 图上的拐点就是硬件“算得快”和“搬得快”的分界。低于拐点时，优先减少搬运、复用权重、增大 batch 或一次产出更多 token。\n\n## 放到 GTS 场景\n\n在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次权重搬运的产出。特别是 Decode 阶段，如果每次只产出一个 token，再多算力也可能闲着；让一次搬运服务更多请求或更多候选 token，才会直接改善吞吐。\n\n## 工程案例\n\n症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。\n\n## 对比与边界\n\nNVIDIA Tensor Core 与 Ascend Cube 的峰值口径不同，但 Roofline 方法相同：算力、带宽和数据复用决定上限。不要把 GPU 上的优化结论原样迁移到 NPU，先确认瓶颈形态是否一致。\n\n## 常见误区\n\n常见误区是只看 TFLOPS，不看带宽和实际 batch。另一个误区是把 Prefill 的结论套到 Decode：Prefill 优化关注矩阵吞吐和排队，Decode 优化更关注权重/KV 复用、调度粒度和尾延迟。\n\n## 专家自检\n\n- 为什么 prefill 和 decode 会落在 Roofline 的不同区域？\n- 如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？\n- 一条 TPOT 告警需要哪些硬件与调度指标才能闭环？\n\n## 小结\n\n先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。"
+      "real_world_connection": "MTP在特定模型、采样参数和流量画像下可能显著提升并发，因为一次验证可产出多个token；通用容量规划必须以接受率、ITL和tokens/s实测为准",
+      "body_md": "## 一句话抓手\n\n> 推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。\n\n![Compute-bound vs Memory-bound：推理的第一性原理 图解](learning-asset://topic-diagrams/t01-roofline.svg)\n\n## 问题场景\n\n线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。\n\n## 第一性原理\n\n可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。\n\n## 机制拆解\n\nArithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满；Dense decode 常由权重读流量和 KV 读取主导，但有效读字节还取决于 MoE、量化、TP 切分和 kernel fusion。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。\n\n## 推导示例\n\n先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上；若高于拐点，再优先看矩阵核与并行度。\n\n1. FLOPs\n2. Bytes\n3. Arithmetic Intensity\n4. Roofline 判断\n5. 优化方向\n\n## 公式/判断\n\n判断路径是：估算 FLOPs、估算需要读写的权重和 KV 字节数，再与硬件的峰值算力和 HBM 带宽相除。Roofline 图上的拐点就是硬件“算得快”和“搬得快”的分界。低于拐点时，优先减少搬运、复用权重、增大 batch 或一次产出更多 token。\n\n## 放到 GTS 场景\n\n在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次主路径执行的产出。特别是 Decode 阶段，如果瓶颈确实落在 HBM 读流量和调度碎片上，让一次搬运服务更多请求或更多候选 token，才可能改善吞吐。\n\n## 工程案例\n\n症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。\n\n## 对比与边界\n\nNVIDIA Tensor Core 与 Ascend Cube 的峰值口径不同，但 Roofline 方法相同：算力、带宽和数据复用决定上限。不要把 GPU 上的优化结论原样迁移到 NPU，先确认瓶颈形态是否一致。\n\n## 常见误区\n\n常见误区是只看 TFLOPS，不看带宽和实际 batch。另一个误区是把 Prefill 的结论套到 Decode：Prefill 优化关注矩阵吞吐和排队，Decode 优化更关注权重/KV 复用、调度粒度和尾延迟。\n\n## 专家自检\n\n- 为什么 prefill 和 decode 会落在 Roofline 的不同区域？\n- 如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？\n- 一条 TPOT 告警需要哪些硬件与调度指标才能闭环？\n\n## 小结\n\n先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。"
     },
     {
       "id": "T02",
@@ -59,12 +59,12 @@
       "key_points": [
         "KV Cache公式：2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element",
         "GQA（Grouped Query Attention）：KV头数少于Q头数，KV Cache可缩减4-8倍",
-        "显存总预算 = 模型权重 + KV Cache + 激活值 + 系统开销",
-        "910B3(64GB) vs 910B4(32GB)：同一模型在不同卡上能支撑的最大并发差异可达2-3倍",
-        "长上下文场景KV Cache爆炸式增长：seq_len从4K到32K，KV Cache增长8倍"
+        "显存总预算 = 模型权重 + KV Cache + 激活值 + runtime/框架/通信开销",
+        "单卡容量规划要区分总KV与per-rank KV，TP下能否分摊取决于KV head分片和后端实现",
+        "长上下文场景KV Cache近似随seq_len线性增长，seq_len从4K到32K时KV约增长8倍"
       ],
-      "real_world_connection": "MiniMax 2.5部署时每张910B3能扛多少并发，就是用这个公式算出来的。910B4放不下某些模型也是这个公式说了算",
-      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下能承载更多并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间。\n\n## 放到 GTS 场景\n\n例如内部评估 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。"
+      "real_world_connection": "评估MiniMax、Qwen等模型在910B3/B4上的并发时，需要把权重、KV、block碎片和运行时预留放到同一张单卡预算表里",
+      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 放到 GTS 场景\n\n例如内部评估 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。"
     },
     {
       "id": "T03",
@@ -84,8 +84,8 @@
         "对硬件选型的影响：910B4(32GB)放不下35B总参数的MoE模型，即使激活参数只有3B",
         "MoE的额外开销：Expert路由计算、All-to-All通信（多卡部署时）、负载不均衡问题"
       ],
-      "real_world_connection": "评估Qwen3.5-35B-A3B用于快速Agent循环时，核心判断就是：910B3能装但910B4装不下，速度接近小模型但质量接近大模型",
-      "body_md": "## 一句话抓手\n\n> MoE 的直觉是“只请几位专家干活”，但所有专家的办公楼往往还得租下来。\n\n![MoE vs Dense的推理差异 图解](learning-asset://topic-diagrams/t03-moe-router.svg)\n\n## 问题场景\n\n团队评估一个 A3B MoE 模型用于 Agent 场景，单 token 计算看似接近小模型，但部署时发现总权重、expert 并行和路由通信成为主约束。\n\n## 第一性原理\n\nDense 模型像每个 token 都走完整流水线；MoE 像先经过一个分诊台，只把 token 送给少数专家。这样每 token 计算量下降，但路由、专家负载和跨卡通信会变成新的工程问题。\n\n## 机制拆解\n\nMoE 要分清总参数和激活参数。总参数决定权重显存和加载成本，激活参数决定每 token 实际计算量。Router 会为每个 token 选择 Top-K expert，专家输出再合并。如果专家分布在多张卡上，还会引入 All-to-All 通信。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 多卡部署 MoE 时要关注 expert 放置、HCCL/All-to-All 路径、token 分发和热点 expert。算子层面不只优化 FFN，还要观察 router、gather/scatter 与通信同步。\n\n## 推导示例\n\n把成本拆成常驻权重、激活计算、路由开销、通信开销四项。A3B 只说明每 token 激活约 3B 参数，不说明总权重和 expert 分布；一旦跨卡，通信可能吃掉稀疏计算收益。\n\n1. Token\n2. Router/Gate\n3. Top-K Experts\n4. All-to-All\n5. Output Merge\n\n## 公式/判断\n\n推理成本可粗略看作：常驻成本约等于总权重加 KV Cache，单 token 计算约等于被激活专家的 FFN 加 attention。MoE 的收益来自激活稀疏，风险来自路由不均、通信放大、专家热度倾斜和框架适配成熟度。\n\n## 放到 GTS 场景\n\n在 GTS 场景里，MoE 适合质量接近大模型、速度接近小模型的 agent 循环。但硬件选型时必须先确认总权重能否放下，再看激活参数是否满足延迟目标。单卡放不下时，专家并行带来的通信成本也要纳入吞吐评估。\n\n## 工程案例\n\n症状：平均吞吐不错但 P99 很差。观察：某些 expert 所在卡利用率异常、All-to-All 耗时拉长。判断：路由负载不均。动作：调整 expert parallel 配置、限制 batch 形态或选择更均衡模型。验证：看 expert 命中分布和跨卡通信耗时。\n\n## 对比与边界\n\nDense 模型可预测性更强，MoE 在质量/成本上有吸引力但工程变量更多。NVIDIA 与 Ascend 都会遇到 expert 并行问题，只是通信栈、kernel 和工具链不同。\n\n## 常见误区\n\n常见误区是看到 A3B 就以为只需要 3B 权重显存。A3B 说的是每 token 激活量，不等于总模型常驻量。另一个误区是忽略负载均衡，热门 expert 会让某些卡成为局部瓶颈。\n\n## 专家自检\n\n- 总参数、激活参数和显存常驻之间有什么区别？\n- 为什么热门 expert 会制造局部瓶颈？\n- 什么场景下 Dense 反而比 MoE 更适合生产服务？\n\n## 小结\n\nMoE 是用稀疏计算换质量和吞吐，但它没有免除显存、通信和调度账。评估时总参数、激活参数、专家布局要分开看。"
+      "real_world_connection": "评估Qwen3.5-35B-A3B用于快速Agent循环时，核心判断是总权重、KV和运行时预留能否放下；FP16单卡910B3/910B4都不应视为可直接承载，量化或多卡后才讨论部署可行性",
+      "body_md": "## 一句话抓手\n\n> MoE 的直觉是“只请几位专家干活”，但所有专家的办公楼往往还得租下来。\n\n![MoE vs Dense的推理差异 图解](learning-asset://topic-diagrams/t03-moe-router.svg)\n\n## 问题场景\n\n团队评估一个 A3B MoE 模型用于 Agent 场景，单 token 计算看似接近小模型，但部署时发现总权重、expert 并行和路由通信成为主约束。\n\n## 第一性原理\n\nDense 模型像每个 token 都走完整流水线；MoE 像先经过一个分诊台，只把 token 送给少数专家。这样每 token 计算量下降，但路由、专家负载和跨卡通信会变成新的工程问题。\n\n## 机制拆解\n\nMoE 要分清总参数和激活参数。总参数决定权重显存和加载成本，激活参数决定每 token 实际计算量。Router 会为每个 token 选择 Top-K expert，专家输出再合并。如果专家分布在多张卡上，还会引入 All-to-All 通信。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 多卡部署 MoE 时要关注 expert 放置、HCCL/All-to-All 路径、token 分发和热点 expert。算子层面不只优化 FFN，还要观察 router、gather/scatter 与通信同步。\n\n## 推导示例\n\n把成本拆成常驻权重、激活计算、路由开销、通信开销四项。A3B 只说明每 token 激活约 3B 参数，不说明总权重和 expert 分布；一旦跨卡，通信可能吃掉稀疏计算收益。\n\n1. Token\n2. Router/Gate\n3. Top-K Experts\n4. All-to-All\n5. Output Merge\n\n## 公式/判断\n\n推理成本可粗略看作：常驻成本约等于总权重加 KV Cache，单 token 计算约等于被激活专家的 FFN 加 attention。MoE 的收益来自激活稀疏，风险来自路由不均、通信放大、专家热度倾斜和框架适配成熟度。\n\n## 放到 GTS 场景\n\n在 GTS 场景里，MoE 适合质量接近大模型、速度接近小模型的 agent 循环。但硬件选型时必须先确认总权重、KV 和运行时预留能否放下，再看激活参数是否满足延迟目标。以 35B FP16 约 70GB 权重量级为例，单卡 910B3/910B4 都不应视为可直接承载；需要量化或多卡 TP/EP 后才进入可行性评估。\n\n## 工程案例\n\n症状：平均吞吐不错但 P99 很差。观察：某些 expert 所在卡利用率异常、All-to-All 耗时拉长。判断：路由负载不均。动作：调整 expert parallel 配置、限制 batch 形态或选择更均衡模型。验证：看 expert 命中分布和跨卡通信耗时。\n\n## 对比与边界\n\nDense 模型可预测性更强，MoE 在质量/成本上有吸引力但工程变量更多。NVIDIA 与 Ascend 都会遇到 expert 并行问题，只是通信栈、kernel 和工具链不同。\n\n## 常见误区\n\n常见误区是看到 A3B 就以为只需要 3B 权重显存。A3B 说的是每 token 激活量，不等于总模型常驻量。另一个误区是忽略负载均衡，热门 expert 会让某些卡成为局部瓶颈。\n\n## 专家自检\n\n- 总参数、激活参数和显存常驻之间有什么区别？\n- 为什么热门 expert 会制造局部瓶颈？\n- 什么场景下 Dense 反而比 MoE 更适合生产服务？\n\n## 小结\n\nMoE 是用稀疏计算换质量和吞吐，但它没有免除显存、通信和调度账。评估时总参数、激活参数、专家布局要分开看。"
     },
     {
       "id": "T19",
@@ -99,15 +99,15 @@
       ],
       "why": "2026年各家模型架构在注意力机制上彻底分化，平台方需要理解不同attention机制的模型落到集群上的资源特征差异",
       "key_points": [
-        "标准Attention瓶颈：O(n²)计算复杂度 + O(n)KV Cache线性增长，1M上下文时KV Cache可达数百GB",
+        "标准Attention瓶颈：Prefill注意力计算接近O(n²)，KV Cache随上下文和并发线性增长，1M上下文时KV账单可能很高",
         "MHA → MQA → GQA → MLA演进线：减少KV头数/压缩KV维度来缩小Cache",
-        "线性注意力本质：用O(n)复杂度替代O(n²)，把KV压缩成固定大小的状态矩阵，新token只更新状态不回看历史",
-        "线性注意力的代价：表达能力弱于softmax attention，精确检索和远距离依赖捕捉能力差",
-        "2026年趋势：混合架构——大部分层用线性attention省资源，少数层用full attention保精度",
-        "三条技术路线并存：Qwen用Gated DeltaNet混合、DeepSeek V4用CSA/HCA压缩稀疏、MiniMax M2.5用纯MHA"
+        "线性注意力本质：用O(n)复杂度或固定状态替代完整softmax历史，新token更新状态而不是完整回看",
+        "线性注意力的代价：表达能力通常弱于softmax attention，精确检索和远距离依赖捕捉能力需要验证",
+        "趋势判断：混合架构常用线性/压缩attention省资源，少数full attention或检索机制保精度",
+        "多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax M2.5更接近MoE + Lightning Attention/混合注意力路线"
       ],
       "real_world_connection": "不同attention机制的模型落到集群上KV Cache占用完全不同，同样显存预算下GQA模型与Gated DeltaNet模型的并发能力可能差3-5倍",
-      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度可以按两条线看：softmax attention 需要随序列增长维护 KV，prefill 还会出现 O(n²) 的注意力矩阵；线性注意力倾向 O(n) 流式更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet 或 CSA/HCA 的 KV 画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。"
+      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度可以按两条线看：softmax attention 需要随序列增长维护 KV，prefill 还会出现 O(n²) 的注意力矩阵；线性注意力倾向 O(n) 流式更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、Lightning Attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。"
     },
     {
       "id": "T20",
@@ -124,12 +124,12 @@
         "DeltaNet原理：维护固定大小的记忆矩阵，每个新token通过delta规则更新矩阵，不存储完整KV Cache",
         "Gated DeltaNet：加入Mamba风格门控机制，学习何时更新/保留记忆，类似LSTM的遗忘/记忆能力",
         "3:1混合比例：Qwen3.6-27B的64层 = 16个块 × (3层Gated DeltaNet + 1层Gated Attention)",
-        "头数配置：DeltaNet层48个V头/16个QK头，Gated Attention层24个Q头/仅4个KV头，极限压缩KV Cache",
-        "DeltaNet层不产生传统KV Cache（固定状态矩阵），只有25%的full attention层产生KV Cache",
-        "Qwen3.6同时支持MTP头做speculative decoding，与GTS当前MTP方向兼容"
+        "头数配置：DeltaNet层48个V头/16个QK头，Gated Attention层24个Q头/仅4个KV头，显著压缩传统KV Cache",
+        "DeltaNet层不产生传统KV Cache（固定状态矩阵），只有部分full attention层产生传统KV Cache",
+        "Qwen3.6模型侧具备MTP相关设计信号；能否在vLLM Ascend中高效用于speculative decoding，需要按版本、量化格式和kernel支持验证"
       ],
-      "real_world_connection": "Qwen3.6-27B(dense)在910B3上FP8约27GB可单卡部署，混合attention使KV Cache远小于MiniMax 2.5，同显存下并发能力更强",
-      "body_md": "## 一句话抓手\n\n> Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。\n\n![Gated DeltaNet混合架构：Qwen3.5/3.6的做法 图解](learning-asset://topic-diagrams/t20-qwen-deltanet.svg)\n\n## 问题场景\n\nQwen 混合架构让大部分层不再保存完整 KV，但平台要判断这是否能转化为 910B 上的真实并发收益，而不是只记住“DeltaNet 省 KV”。\n\n## 第一性原理\n\n可以把 Gated DeltaNet 想成一本随写随更新的压缩笔记，而 full attention 像偶尔回看原始资料。压缩笔记便宜、稳定、长度友好；原始资料昂贵但细节准。混合架构就是把两者按层分工。\n\n## 机制拆解\n\n公开模型卡显示，Qwen3.5 系列采用 Gated DeltaNet 与 Gated Attention 的混合布局，典型模式是若干 DeltaNet 层后接一层 attention。DeltaNet 层维护固定大小状态，Gated Attention 层保留传统 KV。这样大部分层不再随上下文线性增加 KV Cache。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Gated DeltaNet 对 Ascend 的挑战在于专用状态更新 kernel、MTP head、量化格式和 vLLM Ascend 支持。若缺少高效后端，理论长上下文收益会变成 fallback 成本。\n\n## 推导示例\n\n把层分成 DeltaNet 状态层和 Gated Attention 层：前者用固定状态降低随长度增长的 KV，后者保留精确回看。估算并发时，只把 full attention 层纳入传统 KV 增长，同时保留状态矩阵和运行时开销。\n\n1. 3 层 Gated DeltaNet\n2. 1 层 Gated Attention\n3. MoE/FFN\n4. MTP Head\n5. 长上下文部署\n\n## 公式/判断\n\n部署判断可以拆成三步：先看 dense/MoE 与总权重能否放入目标卡，再看只有部分 full attention 层产生传统 KV 时的并发提升，最后看推理框架是否支持 Gated DeltaNet kernel、MTP head 和对应量化格式。\n\n## 放到 GTS 场景\n\n对 GTS 来说，这类模型的吸引力在于长上下文与 agent 循环成本更低。若 910B3 可以承载某个 dense 版本，混合 attention 会让同样显存下的长上下文并发更友好；但如果 Ascend 适配滞后，理论优势会被 kernel 和调度成本吃掉。\n\n## 工程案例\n\n症状：同显存下 Qwen 混合模型并发优于传统 GQA，但某些长文检索任务波动。观察：full attention 层较少，精确回看依赖特定层。判断：结构省资源但任务质量需分桶评估。动作：按任务类型灰度，保留强检索场景评测。验证：看 needle retrieval、工具调用和长对话一致性。\n\n## 对比与边界\n\n不要把 Gated DeltaNet 等同于“无缓存”。它只是把大部分传统 KV 改成固定状态与少数 attention KV；仍需要显存、kernel 和调度支持。\n\n## 常见误区\n\n常见误区是把 Gated DeltaNet 简化成“没有 KV Cache”。更准确地说，它用固定状态替代传统逐 token KV，仍有状态存储和 kernel 成本。另一个误区是忽略少数 full attention 层，它们仍决定精确检索能力和部分显存增长。\n\n## 专家自检\n\n- Qwen 混合层为什么能降低长上下文 KV 成本？\n- DeltaNet 层和 full attention 层分别承担什么职责？\n- 为什么结构优势必须通过 Ascend kernel 验证？\n\n## 小结\n\nQwen 混合架构的核心价值是把长上下文成本从“所有层都增长”变成“少数层增长”。评估时要同时看模型结构、框架支持和硬件 kernel。"
+      "real_world_connection": "Qwen3.6-27B(dense)若采用FP8等低精度，权重量级约27GB，910B3单卡具备放置窗口；生产可行性仍需按上下文、KV/状态、runtime buffer、Ascend后端和吞吐SLA实测确认",
+      "body_md": "## 一句话抓手\n\n> Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。\n\n![Gated DeltaNet混合架构：Qwen3.5/3.6的做法 图解](learning-asset://topic-diagrams/t20-qwen-deltanet.svg)\n\n## 问题场景\n\nQwen 混合架构让大部分层不再保存完整 KV，但平台要判断这是否能转化为 910B 上的真实并发收益，而不是只记住“DeltaNet 省 KV”。\n\n## 第一性原理\n\n可以把 Gated DeltaNet 想成一本随写随更新的压缩笔记，而 full attention 像偶尔回看原始资料。压缩笔记便宜、稳定、长度友好；原始资料昂贵但细节准。混合架构就是把两者按层分工。\n\n## 机制拆解\n\n公开模型卡显示，Qwen3.5 系列采用 Gated DeltaNet 与 Gated Attention 的混合布局，典型模式是若干 DeltaNet 层后接一层 attention。DeltaNet 层维护固定大小状态，Gated Attention 层保留传统 KV。这样大部分层不再随上下文线性增加 KV Cache。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Gated DeltaNet 对 Ascend 的挑战在于专用状态更新 kernel、MTP head、量化格式和 vLLM Ascend 支持。若缺少高效后端，理论长上下文收益会变成 fallback 成本。\n\n## 推导示例\n\n把层分成 DeltaNet 状态层和 Gated Attention 层：前者用固定状态降低随长度增长的 KV，后者保留精确回看。估算并发时，只把 full attention 层纳入传统 KV 增长，同时保留状态矩阵和运行时开销。\n\n1. 3 层 Gated DeltaNet\n2. 1 层 Gated Attention\n3. MoE/FFN\n4. MTP Head\n5. 长上下文部署\n\n## 公式/判断\n\n部署判断可以拆成三步：先看 dense/MoE 与总权重能否放入目标卡，再看只有部分 full attention 层产生传统 KV 时的并发提升，最后看推理框架是否支持 Gated DeltaNet kernel、MTP head、状态缓存和对应量化格式。权重量级可放下不等于生产可服务。\n\n## 放到 GTS 场景\n\n对 GTS 来说，这类模型的吸引力在于长上下文与 agent 循环成本更低。若某个 dense 版本在 FP8/W8A8 等精度下具备单卡放置窗口，混合 attention 会让同样显存下的长上下文并发更友好；但实际可服务上下文、并发和延迟仍要看 KV/状态开销、runtime buffer 与 Ascend 后端实测。\n\n## 工程案例\n\n症状：同显存下 Qwen 混合模型并发优于传统 GQA，但某些长文检索任务波动。观察：full attention 层较少，精确回看依赖特定层。判断：结构省资源但任务质量需分桶评估。动作：按任务类型灰度，保留强检索场景评测。验证：看 needle retrieval、工具调用和长对话一致性。\n\n## 对比与边界\n\n不要把 Gated DeltaNet 等同于“无缓存”。它只是把大部分传统 KV 改成固定状态与少数 attention KV；仍需要显存、kernel 和调度支持。\n\n## 常见误区\n\n常见误区是把 Gated DeltaNet 简化成“没有 KV Cache”。更准确地说，它用固定状态替代传统逐 token KV，仍有状态存储和 kernel 成本。另一个误区是忽略少数 full attention 层，它们仍决定精确检索能力和部分显存增长。\n\n## 专家自检\n\n- Qwen 混合层为什么能降低长上下文 KV 成本？\n- DeltaNet 层和 full attention 层分别承担什么职责？\n- 为什么结构优势必须通过 Ascend kernel 验证？\n\n## 小结\n\nQwen 混合架构的核心价值是把长上下文成本从“所有层都增长”变成“少数层增长”。评估时要同时看模型结构、框架支持和硬件 kernel。"
     },
     {
       "id": "T21",
@@ -141,17 +141,17 @@
       "prerequisites": [
         "T19"
       ],
-      "why": "DeepSeek V4代表另一条技术路线——压缩+稀疏，1M上下文KV Cache仅为V3.2的10%，代表行业方向",
+      "why": "DeepSeek V4代表压缩+稀疏的长上下文路线；其收益来自特定报告设定和实现细节，平台需要学习思路而不是照搬数字",
       "key_points": [
-        "CSA两步压缩：先4x KV压缩（softmax-gated pooling），再用Lightning Indexer做top-k稀疏选择 + 128 token sliding window",
-        "HCA超激进压缩：128x压缩率，对压缩后极短序列做dense attention，提供廉价全局视野",
+        "CSA两步压缩：先做KV压缩（如报告设定中的softmax-gated pooling），再用Lightning Indexer做top-k稀疏选择 + sliding window保留近邻",
+        "HCA超压缩：按特定设计粒度压缩到极短序列后做dense attention，提供廉价全局视野",
         "CSA/HCA交替排列：CSA提供精确稀疏检索，HCA提供模糊全局概览，各层职责不同",
-        "与V3 MLA的对比：V3用latent压缩KV，V4用压缩+稀疏+超压缩，压缩率更高但依赖learned compressor质量",
-        "FP4深入骨髓：Lightning Indexer用FP4，MoE权重FP4 QAT，训练时就用低精度",
-        "对推理框架的挑战：CSA/HCA非标准attention，vLLM/SGLang需专门适配，昇腾适配会滞后"
+        "与V3 MLA的对比：V3用latent压缩KV，V4用压缩+稀疏+超压缩，收益依赖learned compressor质量和层型配置",
+        "低精度深度融入架构：Lightning Indexer使用FP4，MoE expert权重采用FP4 QAT等设计需按公开报告语境理解",
+        "对推理框架的挑战：CSA/HCA非标准attention，vLLM/SGLang/昇腾适配需按版本和kernel计划持续评估"
       ],
-      "real_world_connection": "V4-Pro(1.6T)/Flash(284B)暂时不会在910B3上跑，但CSA/HCA设计思想代表行业方向，未来开源模型会跟进，需提前评估vLLM Ascend适配难度",
-      "body_md": "## 一句话抓手\n\n> DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。\n\n![DeepSeek V4的CSA/HCA混合注意力 图解](learning-asset://topic-diagrams/t21-deepseek-csa-hca.svg)\n\n## 问题场景\n\nDeepSeek V4 类路线把超长上下文从“完整保存”转向“压缩、索引、稀疏检索”。平台侧要提前判断这种非标准 attention 对 vLLM Ascend 与自研 kernel 的冲击。\n\n## 第一性原理\n\n把 1M token 上下文想成一整座档案馆。CSA 像先把每几页压成摘要，再用索引找到最相关的几摞；HCA 像把整馆压成更短目录，然后每次都扫一遍目录。两者交替，让局部细节和全局视野兼得。\n\n## 机制拆解\n\n公开技术报告摘要描述了 CSA 与 HCA 的混合 attention。CSA 对 KV 做较小倍率压缩，再用 Lightning Indexer 选择 top-k 压缩块，并保留滑动窗口处理最近 token。HCA 使用更高倍率压缩，对压缩后的短序列做 dense attention，提供低成本全局视野。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CSA/HCA 这类机制可能需要压缩器、索引器、滑动窗口和特殊 attention kernel。Ascend 适配不只是把算子编译通过，还要验证低精度、访存模式和长上下文下的稳定性。\n\n## 推导示例\n\nCSA 适合较轻压缩后做稀疏精确检索，HCA 适合重压缩后做低成本全局概览，滑动窗口保留最近 token。估算成本要把压缩、索引、检索和 dense-on-compressed 全部算进去。\n\n1. 4x CSA 压缩\n2. Top-K Sparse\n3. 128x HCA 压缩\n4. Dense on Compressed\n5. Sliding Window\n\n## 公式/判断\n\n理解它可以用“压缩率 × 检索方式”两维：CSA 压缩较轻、检索稀疏，适合精确找到相关历史；HCA 压缩更重、检索密集，适合全局粗看。滑动窗口则保证最近上下文不被过度压缩。\n\n## 放到 GTS 场景\n\nGTS 近期不一定直接在 910B3 上跑 V4-Pro 级别模型，但这条路线会影响未来开源模型和推理框架。平台需要提前评估 vLLM Ascend、SGLang 或自研 kernel 对非标准 attention 的适配成本。\n\n## 工程案例\n\n症状：模型宣传 KV 极低，但平台试跑发现 kernel 链复杂、延迟不稳定。观察：索引器和压缩步骤占比高，长上下文收益要到大长度才显现。判断：适合特定长上下文，不一定适合所有在线对话。动作：按上下文长度和任务类型分池。验证：比较短/中/超长请求的成本曲线。\n\n## 对比与边界\n\nCSA/HCA 代表方向，不代表短期一定适合 910B 生产主力。是否引入取决于开源实现成熟度、CANN kernel 成本、模型质量和业务长上下文需求。\n\n## 常见误区\n\n常见误区是只记住“KV 变小”，忽略压缩器和索引器本身的计算、精度和工程复杂度。另一个误区是认为所有请求都需要 1M 上下文；短上下文场景可能更看重普通 decode 延迟。\n\n## 专家自检\n\n- CSA 和 HCA 分别解决哪类历史检索问题？\n- 为什么超长上下文模型可能在短请求上没有优势？\n- 非标准 attention 给推理框架带来哪些适配成本？\n\n## 小结\n\nCSA/HCA 代表长上下文模型从“完整保存历史”走向“压缩、索引、局部保真”的方向。它对平台的启示是：未来瓶颈会越来越多地出现在特殊 attention kernel 和缓存管理。"
+      "real_world_connection": "V4-Pro(1.6T)/Flash(284B)暂时不会在910B3上跑；CSA/HCA设计思想可能影响后续开源模型，需提前评估vLLM Ascend适配难度和业务长上下文需求",
+      "body_md": "## 一句话抓手\n\n> DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。\n\n![DeepSeek V4的CSA/HCA混合注意力 图解](learning-asset://topic-diagrams/t21-deepseek-csa-hca.svg)\n\n## 问题场景\n\nDeepSeek V4 类路线把超长上下文从“完整保存”转向“压缩、索引、稀疏检索”。平台侧要提前判断这种非标准 attention 对 vLLM Ascend 与自研 kernel 的冲击。\n\n## 第一性原理\n\n把 1M token 上下文想成一整座档案馆。CSA 像先把每几页压成摘要，再用索引找到最相关的几摞；HCA 像把整馆压成更短目录，然后每次都扫一遍目录。两者交替，让局部细节和全局视野兼得。\n\n## 机制拆解\n\n公开技术报告摘要描述了 CSA 与 HCA 的混合 attention。CSA 对 KV 做较小倍率压缩，再用 Lightning Indexer 选择 top-k 压缩块，并保留滑动窗口处理最近 token。HCA 使用更高倍率的序列维压缩，对压缩后的短序列做 dense attention，提供低成本全局视野。具体收益要回到报告设定、层型比例和实现细节。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CSA/HCA 这类机制可能需要压缩器、索引器、滑动窗口和特殊 attention kernel。Ascend 适配不只是把算子编译通过，还要验证低精度、访存模式和长上下文下的稳定性。\n\n## 推导示例\n\nCSA 适合较轻压缩后做稀疏精确检索，HCA 适合重压缩后做低成本全局概览，滑动窗口保留最近 token。估算成本要把压缩、索引、检索和 dense-on-compressed 全部算进去。\n\n1. CSA 压缩\n2. Top-K Sparse\n3. 高倍率 HCA 压缩\n4. Dense on Compressed\n5. Sliding Window\n\n## 公式/判断\n\n理解它可以用“压缩粒度 × 检索方式”两维：CSA 压缩较轻、检索稀疏，适合精确找到相关历史；HCA 压缩更重、检索密集，适合全局粗看。滑动窗口则保证最近上下文不被过度压缩。类似 m′=128 的数字应理解为特定设计下的序列维压缩粒度，不是所有场景的总 KV 压缩率。\n\n## 放到 GTS 场景\n\nGTS 近期不一定直接在 910B3 上跑 V4-Pro 级别模型，但这条路线可能影响未来开源模型和推理框架。平台需要持续评估 vLLM Ascend、SGLang 或自研 kernel 对非标准 attention 的适配成本，而不是预设适配节奏。\n\n## 工程案例\n\n症状：模型宣传 KV 极低，但平台试跑发现 kernel 链复杂、延迟不稳定。观察：索引器和压缩步骤占比高，长上下文收益要到大长度才显现。判断：适合特定长上下文，不一定适合所有在线对话。动作：按上下文长度和任务类型分池。验证：比较短/中/超长请求的成本曲线。\n\n## 对比与边界\n\nCSA/HCA 代表方向，不代表短期一定适合 910B 生产主力。是否引入取决于开源实现成熟度、CANN kernel 成本、模型质量和业务长上下文需求。\n\n## 常见误区\n\n常见误区是只记住“KV 变小”，忽略压缩器和索引器本身的计算、精度和工程复杂度。另一个误区是认为所有请求都需要 1M 上下文；短上下文场景可能更看重普通 decode 延迟。\n\n## 专家自检\n\n- CSA 和 HCA 分别解决哪类历史检索问题？\n- 为什么超长上下文模型可能在短请求上没有优势？\n- 非标准 attention 给推理框架带来哪些适配成本？\n\n## 小结\n\nCSA/HCA 代表长上下文模型从“完整保存历史”走向“压缩、索引、局部保真”的方向。它对平台的启示是：未来瓶颈会越来越多地出现在特殊 attention kernel 和缓存管理。"
     },
     {
       "id": "T04",
@@ -187,14 +187,14 @@
       ],
       "why": "理解GTS自研算子的性能提升来源和优化边界",
       "key_points": [
-        "CANN软件栈分层：应用 → GE → TBE → Runtime → 硬件",
+        "CANN链路不是固定串行层：应用/框架可走图执行或eager路径，经由ACL/Runtime调用底层能力",
+        "算子实现可能来自内置算子、TBE、Ascend C或自定义kernel，TBE/Ascend C更像开发与编译路径",
         "Ascend C编程模型：直接控制数据搬运(GM→UB)和计算流水线",
-        "核心优化：Tiling策略、Double Buffer、Kernel Fusion",
-        "GTS自研算子替换vLLM默认实现，针对910B硬件特性做深度适配",
-        "管理者视角：理解算子优化ROI——哪些算子是性能热点(Attention/FFN)，优化空间有多大"
+        "核心优化：Tiling策略、Double Buffer、Kernel Fusion和数据布局",
+        "管理者视角：理解算子优化ROI——哪些算子在Attention/FFN/量化/采样主路径上、优化空间有多大"
       ],
       "real_world_connection": "GTS高性能算子是相对于其他使用同款硬件团队的差异化竞争力",
-      "body_md": "## 一句话抓手\n\n> 自研算子的价值，来自把通用实现改成贴着昇腾数据搬运和计算流水线走。\n\n![昇腾NPU架构与自研算子的价值 图解](learning-asset://topic-diagrams/t05-cann-npu-stack.svg)\n\n## 问题场景\n\nvLLM Ascend 能跑通后，端到端 TPOT 仍不达标。专家不会马上重写全框架，而是用 profiling 找出每 token 每层重复出现的 attention、FFN、量化和采样热点。\n\n## 第一性原理\n\n高级框架像自动挡汽车，能跑但不一定用尽赛道。自研算子像针对赛道调校变速箱和刹车点：目标不是炫技，而是少搬一次数据、少落一次内存、让 Cube/Vector 单元更连续地工作。\n\n## 机制拆解\n\nCANN 栈把上层模型图逐步落到硬件执行。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CANN/Ascend C 优化的关键是 GM、UB、L1/L0、Cube、Vector 和同步之间的流水线。高价值算子通常要重做 tiling、double buffer、fusion 和数据布局，减少 GM 往返。\n\n## 推导示例\n\n算子 ROI = 热点占比 × 可优化空间 × 调用频率。一个 5% 的单算子提升如果处在每层每 token 主路径，端到端可能可见；一个冷路径 kernel 即便 micro benchmark 翻倍，也可能没有服务收益。\n\n1. 应用框架\n2. GE\n3. TBE/Ascend C\n4. Runtime\n5. AI Core\n6. GM/UB\n\n## 公式/判断\n\n算子 ROI 可以用三问判断：它是否处在火焰图热点；瓶颈是搬运、计算还是同步；替换后是否减少全局内存读写或 kernel launch。只有命中主路径的优化，才会在服务指标上可见。\n\n## 放到 GTS 场景\n\nGTS 自研高性能算子相当于把通用 vLLM/框架适配到 910B 的实际特性。对于 Decode 阶段，哪怕单个算子提升不大，只要它在每 token 每层反复出现，累计收益就会非常可观。\n\n## 工程案例\n\n症状：AI Core 利用率波动、kernel 间空隙多。观察：attention 后处理多次落 GM，Vector 与 Cube 衔接差。判断：数据搬运和 kernel launch 过多。动作：融合后处理、调整 tiling、启用 double buffer。验证：看端到端 TPOT 而不只看单算子耗时。\n\n## 对比与边界\n\n自研算子不是越多越好。上游 vLLM/CANN 已优化的路径应优先复用，只有在生产主路径、模型覆盖面和维护成本都成立时才定制。\n\n## 常见误区\n\n常见误区是追求单算子 micro benchmark 好看，却没有端到端收益。另一个误区是过早自研所有算子；更稳妥的路径是先用 profiling 找热点，再针对 attention、FFN 和通信边界做少量高价值替换。\n\n## 专家自检\n\n- 为什么 GM 到 UB 的搬运次数会决定算子收益？\n- 如何判断一个自研算子是否值得长期维护？\n- 单算子 benchmark 和服务 TPOT 为什么可能背离？\n\n## 小结\n\n自研算子是把模型结构、框架调度和 NPU 存储层级对齐的工程能力。它的价值应以端到端延迟、吞吐和稳定性来衡量。"
+      "body_md": "## 一句话抓手\n\n> 自研算子的价值，来自把通用实现改成贴着昇腾数据搬运和计算流水线走。\n\n![昇腾NPU架构与自研算子的价值 图解](learning-asset://topic-diagrams/t05-cann-npu-stack.svg)\n\n## 问题场景\n\nvLLM Ascend 能跑通后，端到端 TPOT 仍不达标。专家不会马上重写全框架，而是用 profiling 找出每 token 每层重复出现的 attention、FFN、量化和采样热点。\n\n## 第一性原理\n\n高级框架像自动挡汽车，能跑但不一定用尽赛道。自研算子像针对赛道调校变速箱和刹车点：目标不是炫技，而是少搬一次数据、少落一次内存、让 Cube/Vector 单元更连续地工作。\n\n## 机制拆解\n\nCANN 不是单一路径流水线。应用/框架可能走图执行或 eager 路径，经由 ACL/Runtime 调用底层能力；算子实现则可能来自内置算子、TBE、Ascend C 或自定义 kernel。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CANN/Ascend C 优化的关键是 GM、UB、L1/L0、Cube、Vector 和同步之间的流水线。高价值算子通常要重做 tiling、double buffer、fusion 和数据布局，减少 GM 往返。\n\n## 推导示例\n\n算子 ROI = 热点占比 × 可优化空间 × 调用频率。一个 5% 的单算子提升如果处在每层每 token 主路径，端到端可能可见；一个冷路径 kernel 即便 micro benchmark 翻倍，也可能没有服务收益。\n\n1. 应用框架\n2. GE\n3. TBE/Ascend C\n4. Runtime\n5. AI Core\n6. GM/UB\n\n## 公式/判断\n\n算子 ROI 可以用三问判断：它是否处在火焰图热点；瓶颈是搬运、计算还是同步；替换后是否减少全局内存读写或 kernel launch。只有命中主路径的优化，才会在服务指标上可见。\n\n## 放到 GTS 场景\n\nGTS 自研高性能算子相当于把通用 vLLM/框架适配到 910B 的实际特性。对于 Decode 阶段，哪怕单个算子提升不大，只要它在每 token 每层反复出现，累计收益就会非常可观。\n\n## 工程案例\n\n症状：AI Core 利用率波动、kernel 间空隙多。观察：attention 后处理多次落 GM，Vector 与 Cube 衔接差。判断：数据搬运和 kernel launch 过多。动作：融合后处理、调整 tiling、启用 double buffer。验证：看端到端 TPOT 而不只看单算子耗时。\n\n## 对比与边界\n\n自研算子不是越多越好。上游 vLLM/CANN 已优化的路径应优先复用，只有在生产主路径、模型覆盖面和维护成本都成立时才定制。\n\n## 常见误区\n\n常见误区是追求单算子 micro benchmark 好看，却没有端到端收益。另一个误区是过早自研所有算子；更稳妥的路径是先用 profiling 找热点，再针对 attention、FFN 和通信边界做少量高价值替换。\n\n## 专家自检\n\n- 为什么 GM 到 UB 的搬运次数会决定算子收益？\n- 如何判断一个自研算子是否值得长期维护？\n- 单算子 benchmark 和服务 TPOT 为什么可能背离？\n\n## 小结\n\n自研算子是把模型结构、框架调度和 NPU 存储层级对齐的工程能力。它的价值应以端到端延迟、吞吐和稳定性来衡量。"
     },
     {
       "id": "T06",
@@ -231,13 +231,13 @@
       ],
       "why": "理解vLLM在昇腾上的差异，以及团队定制化工作解决的问题",
       "key_points": [
-        "vLLM Ascend后端：CUDA kernel替换为CANN算子，适配达芬奇架构",
+        "vLLM Ascend后端：把CUDA后端假设映射到torch-npu/ACL/CANN、Ascend内存布局和算子能力",
         "GTS高性能算子替换：在Attention/FFN热点路径替换默认实现",
         "性能差异：昇腾 vs NVIDIA的推理性能差距客观存在，通过算子优化可缩小",
         "自研调度器/网关：在vLLM之上的服务化层，解决多集群、多租户、流量治理",
         "自研 vs 开源边界：vLLM核心跟社区，GTS算子和调度网关层自研，两者解耦"
       ],
-      "real_world_connection": "全栈 = vLLM(社区) + GTS算子(自研) + 调度器/网关(自研) + ClickHouse可观测性(自研)",
+      "real_world_connection": "全栈 = vLLM(社区) + GTS算子(自研) + 调度器/网关(自研) + 可观测性/计量链路(自研或内部平台能力)",
       "body_md": "## 一句话抓手\n\n> vLLM 适配昇腾不是把 CUDA 名字替换成 CANN，而是把调度假设、算子能力和内存模型重新对齐。\n\n![vLLM昇腾适配与GTS定制 图解](learning-asset://topic-diagrams/t07-vllm-ascend.svg)\n\n## 问题场景\n\n开源 vLLM Ascend 可以跑通基础模型，但内部生产需要支持特定模型结构、量化格式、MTP、P/D 分离和异常恢复。适配工作要分清社区能力、GTS 定制和业务网关三层。\n\n## 第一性原理\n\n上层 vLLM 像一套交通规则，底层硬件像不同城市的道路。规则可以复用，但红绿灯、车道宽度和匝道设计不同，直接照搬会堵在意想不到的地方。\n\n## 机制拆解\n\n昇腾适配需要覆盖模型加载、权重格式、attention backend、KV cache 布局、通信和采样等路径。vLLM Ascend 项目提供了基础能力，但生产场景还要处理特定模型结构、量化格式、NPU kernel、异常恢复和观测指标。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 适配点包括 torch-npu/ACL 调用、CANN kernel、HCCL 通信、KV cache 布局、动态图/静态图差异和 NPU profiling。每个点都可能让同一套 vLLM 调度语义出现不同性能表现。\n\n## 推导示例\n\n优先级按“decode 主路径频率 × 当前瓶颈占比 × 业务覆盖面”排序。高频 attention/MoE/MTP 路径优先；模型加载、特殊采样或少数模型分支可以后置。\n\n1. vLLM API\n2. Ascend Backend\n3. CANN Kernel\n4. KV Manager\n5. GTS 定制\n\n## 公式/判断\n\n适配优先级可按“主路径频率 × 性能瓶颈 × 业务覆盖”排序。Decode 每 token 每层调用的算子优先级最高；只在冷启动或少量模型上出现的路径，可以先保持通用实现。\n\n## 放到 GTS 场景\n\nGTS 定制应重点关注 910B 上的 attention、MoE、MTP、KV cache 和 P/D 分离支持。目标不是维护一套孤岛框架，而是在 vLLM 生态接口下，把关键瓶颈换成适合 Ascend 的实现。\n\n## 工程案例\n\n症状：demo 可用但长稳压测出现尾延迟尖刺。观察：某些 kernel fallback、KV block 回收慢、异常请求拖住队列。判断：适配只过功能未过生产。动作：补 profiling、回归压测和异常恢复测试。验证：看 24h 稳定性、P99 和错误率。\n\n## 对比与边界\n\n不要 fork 成不可升级的孤岛。能通过 vLLM 后端接口、算子插件或清晰扩展点完成的定制，优先保持与上游演进兼容。\n\n## 常见误区\n\n常见误区是只验证 demo 能跑，不验证长时间稳定性和尾延迟。另一个误区是改动过深导致跟不上上游 vLLM。定制点越靠近清晰接口，升级成本越可控。\n\n## 专家自检\n\n- vLLM 语义层和 Ascend kernel 层的边界在哪里？\n- 什么样的定制会显著增加上游跟进成本？\n- 生产验收为什么必须包含长稳与异常路径？\n\n## 小结\n\nvLLM 昇腾适配是一项平台工程：上接生态 API，下接硬件 kernel，中间守住调度和缓存语义。成功标准是生产指标，而不是单点功能可用。"
     },
     {
@@ -254,13 +254,13 @@
       "why": "P/D分离是推理架构重要演进方向，团队已在用4P+4D架构",
       "key_points": [
         "分离动机：Prefill(compute-bound)和Decode(memory-bound)混合会互相干扰",
-        "4P+4D架构：8卡节点中4张做Prefill、4张做Decode，各自独立调度",
-        "KV Cache传输：Prefill卡算完KV传给Decode卡，节点内HCCS高速互联",
-        "容量影响：分离后Prefill算力利用率和Decode并发能力均提升",
-        "MTP上线后Decode速度大幅提升，Prefill可能成为新瓶颈——需重新平衡P/D比例"
+        "4P+4D架构：8卡节点中4张做Prefill、4张做Decode，是一种需按流量画像校准的配比",
+        "KV/状态传输：节点内可关注HCCS，跨节点需看RDMA/connector/rank table，HCCL不等同于KV transfer",
+        "容量影响：分离后收益来自TTFT、ITL和水位反馈的综合改善，不是固定拓扑天然提升",
+        "MTP上线后Decode可能加速，瓶颈可能回到Prefill——需重新平衡P/D比例"
       ],
-      "real_world_connection": "当前P90 TPOT约42ms，MTP上线后理论可降到13-17ms，但Prefill必须跟得上",
-      "body_md": "## 一句话抓手\n\n> P/D 分离的核心，是让“读长 prompt”和“逐 token 生成”不要在同一条队列里互相拖累。\n\n![Prefill/Decode分离与4P4D架构 图解](learning-asset://topic-diagrams/t08-prefill-decode.svg)\n\n## 问题场景\n\n长文档问答把 prefill 队列打满，普通对话用户的 decode 也被拖慢。P/D 分离的目标是让长 prompt 的计算密集阶段和逐 token 的低延迟阶段分开治理。\n\n## 第一性原理\n\nPrefill 像一次读完整份材料，工作量大但并行度高；Decode 像边想边写，每次只写一个字但要持续低延迟。把两种工作混在一起，就容易出现长 prompt 把正在生成的用户卡住。\n\n## 机制拆解\n\nP/D 分离把 prefill 和 decode 放到不同实例或资源池。Prefill 负责计算 prompt 的 KV，随后把 KV 或必要状态交给 decode。4P4D 可以理解为多个 prefiller 和 decoder 的配比设计，用来同时优化 TTFT 与 ITL。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 910B 节点内做 4P4D，需要关注 KV/状态传输、HCCS/HCCL 带宽、prefill 与 decode 资源池隔离、故障重试和 CANN 后端对 disaggregated prefill 的支持。\n\n## 推导示例\n\nP/D 配比由输入长度分布、输出长度分布、并发和 KV 传输成本共同决定。若 MTP 把 decode 加速，系统瓶颈可能重新回到 prefill，需要动态调整 P:D 比例。\n\n1. Prefill Pool\n2. KV Transfer\n3. Decode Pool\n4. 4P4D\n5. SLA Routing\n\n## 公式/判断\n\n配比判断要看三个量：平均输入长度决定 prefill 压力，平均输出长度和并发决定 decode 压力，KV 传输成本决定分离收益是否被网络吃掉。P/D 分离不是越细越好，传输和调度开销必须小于排队收益。\n\n## 放到 GTS 场景\n\n在 GTS MaaS 中，企业知识库问答、代码仓库分析、agent 轨迹都会带来长 prompt。将 prefill 独立扩容，可以避免普通对话的 decode 延迟被长上下文请求拖高，也便于给不同业务设置资源池。\n\n## 工程案例\n\n症状：MTP 上线后 ITL 降低，但 TTFT 开始恶化。观察：decode 池空闲增加，prefill 队列积压。判断：原 4P4D 配比不再匹配新瓶颈。动作：提高 prefill 资源、调整长请求路由、限制超长 prompt。验证：同时看 TTFT、ITL 和池间水位。\n\n## 对比与边界\n\nP/D 分离不是固定架构模板。网络、KV 传输和故障处理成本大于排队收益时，单体调度反而更简单可靠。\n\n## 常见误区\n\n常见误区是把 P/D 分离当成固定 4P4D 模板。真实配比要随输入输出长度、模型大小、网络带宽和 SLA 调整。另一个误区是忽略 KV 传输失败和重试，生产需要清晰的降级路径。\n\n## 专家自检\n\n- 为什么 prefill 和 decode 混部会互相干扰？\n- MTP 上线后为什么可能需要重新计算 P/D 配比？\n- KV 传输失败时服务应该如何降级？\n\n## 小结\n\nP/D 分离是把两类不同瓶颈拆开治理：Prefill 追求吞吐和 TTFT，Decode 追求稳定 ITL。配比设计应由流量画像驱动。"
+      "real_world_connection": "若内部基线显示P90 TPOT约42ms，MTP目标收益也必须和具体模型、采样参数、接受率、P/D配比及压测流量绑定，不能作为通用结论",
+      "body_md": "## 一句话抓手\n\n> P/D 分离的核心，是让“读长 prompt”和“逐 token 生成”不要在同一条队列里互相拖累。\n\n![Prefill/Decode分离与4P4D架构 图解](learning-asset://topic-diagrams/t08-prefill-decode.svg)\n\n## 问题场景\n\n长文档问答把 prefill 队列打满，普通对话用户的 decode 也被拖慢。P/D 分离的目标是让长 prompt 的计算密集阶段和逐 token 的低延迟阶段分开治理。\n\n## 第一性原理\n\nPrefill 像一次读完整份材料，工作量大但并行度高；Decode 像边想边写，每次只写一个字但要持续低延迟。把两种工作混在一起，就容易出现长 prompt 把正在生成的用户卡住。\n\n## 机制拆解\n\nP/D 分离把 prefill 和 decode 放到不同实例或资源池。Prefill 负责计算 prompt 的 KV，随后通过 connector/transport 把 KV 或必要状态交给 decode，并等待 decode 侧确认。节点内可能受益于 HCCS，跨节点通常还要看 RDMA、rank table、connector 和具体后端；HCCL 主要用于分布式通信/collective，不能简单等同于 KV transfer。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 910B 节点内做 4P4D，需要关注 KV/状态传输、HCCS 节点内互联、跨节点 RDMA/connector、prefill 与 decode 资源池隔离、故障重试和 CANN 后端对 disaggregated prefill 的支持。HCCL 可用于分布式通信，但不是 KV transfer 的唯一解释。\n\n## 推导示例\n\nP/D 配比由输入长度分布、输出长度分布、并发和 KV 传输成本共同决定。若 MTP 把 decode 加速，系统瓶颈可能重新回到 prefill，需要动态调整 P:D 比例。\n\n1. Prefill Queue\n2. KV Connector\n3. Decode ACK\n4. Watermarks\n5. P:D Rebalance\n\n## 公式/判断\n\n配比判断要看三个量：平均输入长度决定 prefill 压力，平均输出长度和并发决定 decode 压力，KV 传输成本与失败恢复决定分离收益是否被网络吃掉。P/D 分离不是越细越好，传输、ACK、backpressure 和调度开销必须小于排队收益。\n\n## 放到 GTS 场景\n\n在 GTS MaaS 中，企业知识库问答、代码仓库分析、agent 轨迹都会带来长 prompt。将 prefill 独立扩容，可以避免普通对话的 decode 延迟被长上下文请求拖高，也便于给不同业务设置资源池。\n\n## 工程案例\n\n症状：MTP 上线后 ITL 降低，但 TTFT 开始恶化。观察：decode 池空闲增加，prefill 队列积压。判断：原 4P4D 配比不再匹配新瓶颈。动作：提高 prefill 资源、调整长请求路由、限制超长 prompt。验证：同时看 TTFT、ITL 和池间水位。\n\n## 对比与边界\n\nP/D 分离不是固定架构模板。网络、KV 传输和故障处理成本大于排队收益时，单体调度反而更简单可靠。\n\n## 常见误区\n\n常见误区是把 P/D 分离当成固定 4P4D 模板。真实配比要随输入输出长度、模型大小、网络带宽和 SLA 调整。另一个误区是忽略 KV 传输失败和重试，生产需要清晰的降级路径。\n\n## 专家自检\n\n- 为什么 prefill 和 decode 混部会互相干扰？\n- MTP 上线后为什么可能需要重新计算 P/D 配比？\n- KV 传输失败时服务应该如何降级？\n\n## 小结\n\nP/D 分离是把两类不同瓶颈拆开治理：Prefill 追求吞吐和 TTFT，Decode 追求稳定 ITL。配比设计应由流量画像驱动。"
     },
     {
       "id": "T09",
@@ -273,17 +273,17 @@
         "T01",
         "T08"
       ],
-      "why": "当前最重要的性能优化方向，直接决定集群容量能否从1200翻倍到3000+",
+      "why": "重要性能优化方向之一；是否能把容量从某个内部基线提升到更高区间，取决于模型、采样参数、接受率、验证开销和调度形态",
       "key_points": [
-        "Speculative Decoding原理：小模型draft多token → 大模型一次前向并行验证 → 拒绝采样保证无损",
+        "Speculative Decoding原理：draft/MTP/n-gram提出候选 → 目标模型一次前向并行验证 → 严格接受/拒绝采样时可保持目标分布",
         "两种形态：独立Draft Model vs 模型原生MTP Head",
-        "接受率α决定收益：α=0.83意味着平均每次验证接受约5个token中的4个",
-        "域内MTP头基于约1个月内部QA数据训练，域内数据 > 通用数据的接受率",
-        "Batch Size影响：小batch收益最大（交互coding），大batch边际递减",
-        "性能验证：固定并发对比MTP开/关的P50/P90 TPOT和吞吐QPS"
+        "收益由平均连续接受长度决定；逐token接受率α不能直接乘以候选长度当作平均接受token数",
+        "域内MTP头可能提升特定业务域接受率，但需要按采样温度、任务类型和线上流量分桶验证",
+        "Batch Size影响：小batch收益可能更明显，大batch下验证开销和调度副作用会放大",
+        "性能验证：固定并发对比MTP开/关的P50/P90 TPOT、ITL、tokens/s、accepted tokens/verify step和质量一致性"
       ],
-      "real_world_connection": "P90 TPOT从42ms降到13-17ms，集群容量从~1200到~3000-3600，这是MTP撬动的最大业务价值",
-      "body_md": "## 一句话抓手\n\n> MTP 的直觉是：既然 Decode 每步搬权重很贵，那就尝试一次多猜几个 token，再由主模型验收。\n\n![MTP投机推理 图解](learning-asset://topic-diagrams/t09-mtp-speculative.svg)\n\n## 问题场景\n\n团队希望把 decode TPOT 从几十毫秒压到更低，但直接加卡收益有限。MTP 通过一次验证多个候选 token，提高每次主模型权重读取的产出。\n\n## 第一性原理\n\n普通 Decode 像每次只走一步楼梯；投机推理像先让轻量助手试着跑几步，主模型再检查哪些步没有跑偏。猜对的 token 可以一次通过，猜错再回退，目标是在不改变输出分布的前提下减少主模型调用次数。\n\n## 机制拆解\n\nSpeculative decoding 通常由 draft model、MTP head 或 n-gram 方法提出候选 token，目标模型并行验证这些候选。被接受的 token 直接进入输出，被拒绝的位置按目标模型结果继续生成。收益取决于候选质量、验证开销和 batch 调度。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上实现 MTP 要看候选生成、目标模型验证 kernel、采样和 batch 调度是否能高效融合。若 MTP head 或 draft 路径触发低效 fallback，收益会被吃掉。\n\n## 推导示例\n\n近似收益由平均接受 token 数决定：接受率越高，主模型每输出 token 的有效 decode 步数越少。但候选长度越长，验证开销、显存和调度复杂度也越高。\n\n1. Draft/MTP\n2. Propose Tokens\n3. Target Verify\n4. Accept/Reject\n5. Faster Decode\n\n## 公式/判断\n\n粗略收益来自接受长度：平均一次验证接受的 token 越多，主模型每 token 的权重搬运成本越低。但如果 draft 太慢、接受率低或验证扩展 batch 破坏调度，端到端 ITL 可能不降反升。\n\n## 放到 GTS 场景\n\nGTS 关注 MTP，是因为 Decode 阶段常常 memory-bound。对 agent 循环和代码生成这类重复模式明显的请求，候选 token 接受率可能更高；对高随机采样或短回复，收益会变小。\n\n## 工程案例\n\n症状：离线 benchmark 提速，线上 ITL 改善不明显。观察：真实采样温度更高、接受率下降、batch 被候选长度拉宽。判断：实验流量与生产流量分布不一致。动作：按业务域训练/选择 MTP、分场景开关。验证：记录接受率、回退率和 ITL。\n\n## 对比与边界\n\nSpeculative decoding 保证分布一致的前提依赖正确验证流程。为了速度跳过拒绝采样或改输出分布，会把性能优化变成质量风险。\n\n## 常见误区\n\n常见误区是认为投机推理必然提速。vLLM 文档也提醒不同数据集和采样参数下未必降低 ITL。另一个误区是只看 token/s，不验证输出一致性、显存增量和调度副作用。\n\n## 专家自检\n\n- 接受率为什么比候选长度更能决定收益？\n- 什么业务流量更适合 MTP？\n- 如何设计 MTP 开关的线上灰度指标？\n\n## 小结\n\nMTP/投机推理是用“多猜再验证”提高一次 Decode 搬运的产出。它适合 memory-bound 场景，但必须以接受率和端到端延迟来评估。"
+      "real_world_connection": "P90 TPOT或容量提升数字只能作为某内部压测基线/目标假设，必须同时标注模型、候选长度、采样参数、P/D配比和验收指标",
+      "body_md": "## 一句话抓手\n\n> MTP 的直觉是：既然 Decode 每步搬权重很贵，那就尝试一次多猜几个 token，再由主模型验收。\n\n![MTP投机推理 图解](learning-asset://topic-diagrams/t09-mtp-speculative.svg)\n\n## 问题场景\n\n团队希望把 decode TPOT 从几十毫秒压到更低，但直接加卡收益有限。MTP 通过一次验证多个候选 token，提高每次主模型权重读取的产出。\n\n## 第一性原理\n\n普通 Decode 像每次只走一步楼梯；投机推理像先让轻量助手试着跑几步，主模型再检查哪些步没有跑偏。在严格目标模型验证和接受/拒绝采样成立时，猜对的 token 可以一次通过，猜错再回退，目标是在保持目标分布的前提下减少主模型调用次数。\n\n## 机制拆解\n\nSpeculative decoding 通常由 draft model、MTP head 或 n-gram 方法提出候选 token，目标模型并行验证这些候选。被接受的连续前缀进入输出，被拒绝的位置按目标模型结果继续生成。收益取决于候选质量、验证开销、候选长度、采样参数和 batch 调度。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上实现 MTP 要看候选生成、目标模型验证 kernel、采样和 batch 调度是否能高效融合。若 MTP head 或 draft 路径触发低效 fallback，收益会被吃掉。\n\n## 推导示例\n\n近似收益由每个 verify step 的平均连续接受 token 数决定：接受前缀越长，主模型每输出 token 的有效 decode 步数越少。但逐 token 接受率不能直接乘以候选长度当作平均收益；候选越长，验证开销、显存和调度复杂度也越高。\n\n1. Draft/MTP\n2. Propose Tokens\n3. Target Verify\n4. Accept/Reject\n5. Faster Decode\n\n## 公式/判断\n\n粗略收益来自平均连续接受长度，而不是单个逐 token 接受率的简单乘法。若 α 是逐 token 接受概率，候选长度为 k 时还要按拒绝位置、回退率和 verify step 统计实际 accepted tokens。draft 太慢、接受率低或验证扩展 batch 破坏调度时，端到端 ITL 可能不降反升。\n\n## 放到 GTS 场景\n\nGTS 关注 MTP，是因为 Decode 阶段常常 memory-bound。对 agent 循环和代码生成这类重复模式明显的请求，候选 token 接受率可能更高；对高随机采样或短回复，收益会变小。\n\n## 工程案例\n\n症状：离线 benchmark 提速，线上 ITL 改善不明显。观察：真实采样温度更高、接受率下降、batch 被候选长度拉宽。判断：实验流量与生产流量分布不一致。动作：按业务域训练/选择 MTP、分场景开关。验证：记录接受率、回退率和 ITL。\n\n## 对比与边界\n\nSpeculative decoding 保证分布一致的前提依赖目标模型验证、接受/拒绝采样和采样参数严格实现标准算法。MTP head、n-gram 或工程近似路径都需要单独验证质量一致性；为了速度跳过拒绝采样或改输出分布，会把性能优化变成质量风险。\n\n## 常见误区\n\n常见误区是认为投机推理必然提速。vLLM 文档也提醒不同数据集和采样参数下未必降低 ITL。另一个误区是只看 token/s，不验证输出一致性、显存增量和调度副作用。\n\n## 专家自检\n\n- 接受率为什么比候选长度更能决定收益？\n- 什么业务流量更适合 MTP？\n- 如何设计 MTP 开关的线上灰度指标？\n\n## 小结\n\nMTP/投机推理是用“多猜再验证”提高一次 Decode 搬运的产出。它适合 memory-bound 场景，但必须以接受率和端到端延迟来评估。"
     },
     {
       "id": "T10",
@@ -298,11 +298,11 @@
       ],
       "why": "量化是有限显存下部署更大模型或支撑更多并发的关键手段",
       "key_points": [
-        "量化本质：更少bit表示权重，减少显存和HBM搬运量，代价是精度损失",
-        "常见方案：W8A8、W4A16、GPTQ/AWQ训后量化",
-        "Decode阶段权重减半 → HBM搬运减半 → 速度接近翻倍",
-        "质量影响：W8A8通常损失小，W4A16在复杂推理可能明显退化",
-        "硬件分级：910B3(64G)用FP16，910B4(32G)用W8A8或W4A16",
+        "量化本质：更少bit表示权重或KV，减少显存和部分HBM搬运量，代价是精度/适配风险",
+        "常见方案：W8A8、W4A16、GPTQ/AWQ训后量化，以及FP8/INT8/INT4/FP4等依赖后端支持的格式",
+        "权重量化可能降低decode读权重压力，但是否提速取决于低精度kernel、反量化开销、KV读取、采样、通信和batch形态",
+        "质量影响：W8A8通常风险较小，W4A16/INT4/FP4在复杂推理、工具调用或长上下文中可能明显退化",
+        "硬件分级：B3/B4都可按模型大小、SLA、kernel成熟度和业务评测选择精度，不能硬编码为B3只用FP16、B4只用量化",
         "量化不是免费午餐，关键业务慎用激进量化"
       ],
       "real_world_connection": "MiniMax 2.5在910B3上的精度选择直接影响可行性和质量",
@@ -320,14 +320,14 @@
       ],
       "why": "不会看指标就不会做决策，这些指标是评估系统健康度和优化效果的定量语言",
       "key_points": [
-        "TTFT：首token延迟，由Prefill速度决定",
-        "TPOT：每token生成间隔，由Decode速度决定",
-        "TPS：每秒产出token数，衡量单请求速度",
-        "Throughput：系统级吞吐量，衡量集群整体产能",
+        "TTFT：从请求进入到首token返回，通常受网关排队、调度等待、prefill和首token传输共同影响",
+        "ITL/TPOT：后续token生成间隔，主要反映decode节奏、调度和流式发送",
+        "tokens/s/TPS：需区分单请求生成速度、实例吞吐和集群吞吐，不能混用",
+        "Throughput：系统级吞吐量，衡量实例或集群整体产能",
         "P50/P95/P99百分位延迟比平均值更有意义",
-        "核心矛盾：提高batch size可提升Throughput但增加单请求TPOT"
+        "核心矛盾：提高batch size可提升Throughput但可能增加单请求TPOT/ITL"
       ],
-      "real_world_connection": "P90 TPOT约42ms是关键基线，MTP效果验证就看这个数字能降多少",
+      "real_world_connection": "TPOT/ITL基线是MTP效果验证的关键观测项，但具体数字必须和模型、流量画像和压测条件绑定",
       "body_md": "## 一句话抓手\n\n> 推理服务指标不能只看 token/s；用户感知的是等待首字、生成节奏和失败率。\n\n![推理服务指标体系 图解](learning-asset://topic-diagrams/t11-inference-metrics.svg)\n\n## 问题场景\n\n容量看板显示 tokens/s 提升，但用户抱怨首字慢。指标体系要能区分排队、prefill、decode、流式返回和错误恢复，而不是只给一个吞吐数字。\n\n## 第一性原理\n\n同样每秒产出很多 token，如果用户等很久才看到第一个字，体验仍然差。指标体系要把平台视角的吞吐和用户视角的延迟放在同一张图上。\n\n## 机制拆解\n\nTTFT 衡量从请求进入到首 token 的时间，主要受排队和 prefill 影响。ITL/TPOT 衡量后续 token 的节奏，主要受 decode 和调度影响。吞吐看总 tokens/s，错误率看稳定性，显存水位和队列长度帮助定位瓶颈。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 侧排障要把服务指标与 NPU 指标对齐：AI Core/HBM、kernel timeline、HCCL 通信、KV 水位和调度队列都要能回到同一个 request/model/cluster 标签。\n\n## 推导示例\n\nTTFT = 网关排队 + 调度等待 + prefill + 首 token 返回；ITL/TPOT = decode 轮次 + 调度 + 流式发送；吞吐 = 时间窗口内输出 token / 资源。不同指标对应不同优化动作。\n\n1. TTFT\n2. ITL\n3. TPOT\n4. Throughput\n5. Error/Cost\n6. SLO\n\n## 公式/判断\n\n指标应按请求维度看分布，而不是只看平均值。P50 代表普通体验，P95/P99 代表尾部风险；同时要按模型、租户、输入长度、输出长度、状态码和资源池切分，避免把问题平均掉。\n\n## 放到 GTS 场景\n\nGTS 平台做容量治理时，可以用 TTFT 判断 prefill 池是否拥塞，用 ITL 判断 decode 池和 memory-bound 是否恶化，用 cache usage 判断 KV 是否接近危险水位，用降级次数判断路由策略是否过于激进。\n\n## 工程案例\n\n症状：P50 正常但 P99 爆炸。观察：长上下文租户集中、KV 水位高、队列出现抢占。判断：尾部由重载请求引发。动作：按输入长度分级路由、限制超长请求、隔离高优先级流量。验证：P99 按租户和长度下降。\n\n## 对比与边界\n\n平均值适合汇报趋势，不适合定位事故。专家看分布、分桶和相关性，尤其是输入长度、输出长度、模型版本和资源池。\n\n## 常见误区\n\n常见误区是用单一 QPS 或 token/s 做 SLA。另一个误区是指标没有业务标签，导致事故时只能看到“整体慢”，看不到是某个模型、租户或长上下文流量导致。\n\n## 专家自检\n\n- TTFT 和 ITL 分别反映哪类瓶颈？\n- 为什么 P99 比平均值更适合做 SLA？\n- 容量评审至少需要哪些分桶维度？\n\n## 小结\n\n好的指标体系把用户体验、资源效率和故障定位连起来。TTFT、ITL、吞吐、错误率和成本必须成组使用。"
     },
     {
@@ -343,14 +343,14 @@
       "why": "10集群 + 统一网关 + 网络隔离，路由只有一次机会，这是服务架构核心约束",
       "key_points": [
         "统一网关职责：请求入口、协议转换(OpenAI兼容)、认证鉴权、路由、SSE流式输出",
-        "One-shot routing约束：集群间隔离，选错无fallback",
-        "集群水位上报：每2-3秒推送active_requests/queued/kv_cache_pct/avg_latency",
-        "选路演进：①加权最少连接+水位 → ②请求分级差异化 → ③ClickHouse预测式路由",
-        "硬阈值保护：排队超限或KV Cache>85%直接移除候选",
-        "评分公式：score = 剩余KV×0.4 + 排队空间×0.3 + 延迟达标度×0.3"
+        "One-shot routing约束：集群间隔离时，流式输出后的透明fallback边界很窄",
+        "集群水位上报：active_requests/queued/kv_cache_pct/avg_latency等指标需处理新鲜度和可信度",
+        "选路演进：加权最少连接+水位 → 请求分级差异化 → 基于历史数据的预测式路由",
+        "硬阈值保护：排队超限、KV Cache高水位、能力不匹配或熔断状态应直接移除候选",
+        "评分公式只能作为示例框架：硬过滤 + 归一化负载 + token预算 + 租户优先级 + circuit breaker"
       ],
-      "real_world_connection": "Phase 1限流已完成，下一步把轮询改成水位感知智能选路是Phase 2核心工作",
-      "body_md": "## 一句话抓手\n\n> 网关不是简单转发器，而是 MaaS 平台把业务意图翻译成资源决策的大脑。\n\n![网关架构与跨集群智能路由 图解](learning-asset://topic-diagrams/t12-gateway-routing.svg)\n\n## 问题场景\n\n同一模型部署在多个集群，某个集群 KV 水位高但 QPS 低，另一个集群 QPS 高但短请求多。智能路由必须理解请求画像和资源状态，而不是轮询。\n\n## 第一性原理\n\n用户只说“我要调用某个模型”，平台还要判断去哪套集群、用哪个副本、是否限流、能不能降级、失败后是否重试。网关就是这层决策的入口。\n\n## 机制拆解\n\n智能路由通常结合静态策略和动态信号。静态策略包括租户权限、模型版本、地域、成本等级；动态信号包括队列长度、TTFT/ITL、错误率、显存水位和健康检查。请求进入后，网关选择目标集群，并把结果反馈给后续调度。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 昇腾资源池可能按卡型、CANN 版本、模型适配程度和故障域分层。网关路由要把这些能力差异编码进候选集，避免把不支持的模型或精度打到错误集群。\n\n## 推导示例\n\n路由可先做硬过滤：权限、模型版本、区域、健康、能力；再做软评分：剩余 KV、队列空间、延迟达标、成本和租户优先级。长上下文请求应提高 KV 权重。\n\n1. Request\n2. Policy\n3. Model Pool\n4. Cluster Score\n5. Route/Retry\n6. Feedback\n\n## 公式/判断\n\n可把路由评分理解为：可用性硬过滤 + SLA 匹配 + 实时负载评分 + 成本偏好。硬过滤先排除不可用或无权限目标，评分再在候选中选择最合适的资源。\n\n## 放到 GTS 场景\n\n在 GTS 跨集群服务中，同一个模型可能部署在多个资源池。网关需要在高峰期把请求导向健康集群，对低优先级流量降级，对长上下文请求选择 KV 空间更充足的池，对失败请求做有界重试。\n\n## 工程案例\n\n症状：整体容量足够但部分请求频繁超时。观察：长请求被路由到 KV 水位高的池。判断：路由只看连接数，不看 token 预算。动作：引入输入长度估计和 KV 水位评分。验证：长请求 TTFT 与失败率下降。\n\n## 对比与边界\n\n跨集群隔离下 one-shot routing 的代价很高，盲目重试会制造流量放大。失败策略必须有预算、幂等和流式响应边界。\n\n## 常见误区\n\n常见误区是把重试当万能药。推理请求成本高，盲目重试会放大拥塞。另一个误区是路由只看当前负载，不看请求长度和输出预算，导致长请求进入错误资源池。\n\n## 专家自检\n\n- 为什么最少连接不等于最优推理路由？\n- 路由评分中哪些指标应作为硬过滤？\n- 流式请求失败后为什么不能总是透明重试？\n\n## 小结\n\n网关路由连接业务 SLA 与底层资源状态。它越懂模型、队列和成本，MaaS 平台越能在高峰期保持稳定。"
+      "real_world_connection": "内部平台示例：基础限流后，水位感知选路可作为下一步治理能力；失败重试要区分入队前、首token前和流式输出后三个边界",
+      "body_md": "## 一句话抓手\n\n> 网关不是简单转发器，而是 MaaS 平台把业务意图翻译成资源决策的大脑。\n\n![网关架构与跨集群智能路由 图解](learning-asset://topic-diagrams/t12-gateway-routing.svg)\n\n## 问题场景\n\n同一模型部署在多个集群，某个集群 KV 水位高但 QPS 低，另一个集群 QPS 高但短请求多。智能路由必须理解请求画像和资源状态，而不是轮询。\n\n## 第一性原理\n\n用户只说“我要调用某个模型”，平台还要判断去哪套集群、用哪个副本、是否限流、能不能降级、失败后是否重试。网关就是这层决策的入口。\n\n## 机制拆解\n\n智能路由通常结合静态策略和动态信号。静态策略包括租户权限、模型版本、地域、成本等级；动态信号包括队列长度、TTFT/ITL、错误率、显存水位和健康检查。请求进入后，网关选择目标集群，并把结果反馈给后续调度。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 昇腾资源池可能按卡型、CANN 版本、模型适配程度和故障域分层。网关路由要把这些能力差异编码进候选集，避免把不支持的模型或精度打到错误集群。\n\n## 推导示例\n\n路由可先做硬过滤：权限、模型版本、区域、健康、能力；再做软评分：剩余 KV、队列空间、延迟达标、成本和租户优先级。长上下文请求应提高 KV 权重。\n\n1. Request Budget\n2. Hard Filter\n3. Normalized Score\n4. Pre-stream Retry\n5. Post-stream Fail\n6. Feedback\n\n## 公式/判断\n\n可把路由评分理解为：可用性硬过滤 + SLA 匹配 + 请求 token 预算 + 归一化实时负载评分 + 成本偏好。硬过滤先排除不可用、无权限或能力不匹配目标，评分再在候选中选择资源。评分输入要处理指标新鲜度、租户优先级、per-model capacity 和 circuit breaker。\n\n## 放到 GTS 场景\n\n在 GTS 跨集群服务中，同一个模型可能部署在多个资源池。网关需要在高峰期把请求导向健康集群，对低优先级流量降级，对长上下文请求选择 KV 空间更充足的池。失败处理要分清边界：入队前可重试，首 token 前可有预算重试，流式输出后通常只能显式失败或交给客户端重发。\n\n## 工程案例\n\n症状：整体容量足够但部分请求频繁超时。观察：长请求被路由到 KV 水位高的池。判断：路由只看连接数，不看 token 预算。动作：引入输入长度估计和 KV 水位评分。验证：长请求 TTFT 与失败率下降。\n\n## 对比与边界\n\n跨集群隔离下 one-shot routing 的代价很高，盲目重试会制造流量放大。失败策略必须有预算、幂等和流式响应边界。\n\n## 常见误区\n\n常见误区是把重试当万能药。推理请求成本高，盲目重试会放大拥塞。另一个误区是路由只看当前负载，不看请求长度和输出预算，导致长请求进入错误资源池。\n\n## 专家自检\n\n- 为什么最少连接不等于最优推理路由？\n- 路由评分中哪些指标应作为硬过滤？\n- 流式请求失败后为什么不能总是透明重试？\n\n## 小结\n\n网关路由连接业务 SLA 与底层资源状态。它越懂模型、队列和成本，MaaS 平台越能在高峰期保持稳定。"
     },
     {
       "id": "T13",
@@ -370,7 +370,7 @@
         "租户配额网关层本地缓存校验（毫秒级），不依赖中心计费系统",
         "加权公平队列(WFQ)防大用户饿死小用户"
       ],
-      "real_world_connection": "Phase 1基础限流已有，Phase 2加分级路由，Phase 3加降级引擎和预测策略",
+      "real_world_connection": "内部平台示例：可先落地基础限流和请求分级，再逐步扩展到降级引擎与预测策略，避免和学习App自身Phase编号混淆",
       "body_md": "## 一句话抓手\n\n> 流量治理的目标不是拒绝用户，而是在资源有限时保护核心体验和系统生命线。\n\n![流量治理：限流、分级与降级 图解](learning-asset://topic-diagrams/t13-traffic-governance.svg)\n\n## 问题场景\n\n一个租户突然发起长上下文压测，入口 QPS 不高但 KV 很快耗尽。只按请求数限流无法保护推理平台，必须按 token、上下文和并发治理。\n\n## 第一性原理\n\n推理平台像电网，平时大家都能用，高峰时必须区分医院、工厂和普通照明。限流、分级、降级就是在压力来临前定义好谁优先、谁排队、谁用备用方案。\n\n## 机制拆解\n\n限流控制进入系统的速率，配额控制租户长期资源占用，优先级决定拥塞时的排队顺序，降级用小模型、短上下文或非流式方案替代，熔断在下游异常时快速阻止故障扩散。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 资源池的治理动作要落到模型实例和 KV 水位：限制 max_tokens、max_model_len、并发、优先级队列和降级模型，比单纯网关 QPS 更贴近 NPU 瓶颈。\n\n## 推导示例\n\n如果瓶颈是 KV，治理变量是上下文长度和并发；如果瓶颈是 decode 带宽，治理变量是输出 token 和 batch；如果瓶颈是错误率，治理变量是熔断和退避。\n\n1. Quota\n2. Rate Limit\n3. Priority\n4. Degrade\n5. Circuit Break\n6. Recover\n\n## 公式/判断\n\n治理策略应围绕资源瓶颈设计：如果瓶颈是 KV 显存，就限制上下文和并发；如果瓶颈是 decode 带宽，就限制输出 token 或降低低优先级流量；如果瓶颈是网关或依赖服务，就启用熔断和退避。\n\n## 放到 GTS 场景\n\nGTS 内部可以按租户、业务线、模型和优先级设置策略。核心生产请求保障 SLA，实验请求允许排队或降级；当某模型池错误率升高时，网关应停止继续打入流量，并把可降级请求转到备用模型。\n\n## 工程案例\n\n症状：低优先级压测导致生产 ITL 变差。观察：压测请求输出长、占用 decode 多轮。判断：共享队列缺少优先级和输出预算。动作：WFQ、租户配额、压测标记、低优先级降级。验证：生产 P99 恢复且低优先级可控排队。\n\n## 对比与边界\n\n治理不是越严越好。过度拒绝会浪费空闲资源，过度弹性会伤害 SLA。策略应支持保底、弹性和故障时收缩。\n\n## 常见误区\n\n常见误区是事故后手工限流。治理规则应提前配置并可观测。另一个误区是只做入口限流，不做输出 token 和长上下文控制，最终仍会被 KV 或 decode 拖垮。\n\n## 专家自检\n\n- 为什么 QPS 限流不足以保护 LLM 推理？\n- 降级链路应该优先降哪些参数？\n- 如何避免大租户饿死小租户？\n\n## 小结\n\n流量治理是把平台承诺写成可执行规则。限流、配额、优先级、降级和熔断要一起设计，才能在高峰和故障中保持可控。"
     },
     {
@@ -383,16 +383,16 @@
       "prerequisites": [
         "T11"
       ],
-      "why": "不能观测就不能优化，ClickHouse管道已搭好数据层，需理解完整设计思路",
+      "why": "不能观测就不能优化；需理解从指标、日志、链路到隐私和成本控制的完整设计思路",
       "key_points": [
         "AI推理可观测性 vs 传统微服务：请求持续秒到分钟级、资源消耗差异10倍以上、需token粒度计量",
-        "双通道：实时流(ClickHouse物化视图→看板) + 批处理(聚合→计费报表)",
-        "三级视图：集群鸟瞰 → TOP用户/token消耗 → 单请求排查",
-        "告警：P99超阈值5分钟、单集群KV>85%、心跳超时",
-        "数据保留：请求级原始日志约1月，聚合指标长期保留"
+        "双通道：实时指标看低基数趋势和告警，批处理/聚合支撑计费报表和复盘",
+        "三级视图：集群鸟瞰 → TOP用户/token消耗 → 脱敏后的单请求排查",
+        "告警：P99超阈值、单集群KV高水位、心跳超时、错误率突增等需绑定动作",
+        "数据治理：控制高基数标签、trace采样、prompt/response脱敏或不落库、请求级日志保留周期"
       ],
-      "real_world_connection": "数据采集和ClickHouse处理层已就绪，当前重点是应用层看板",
-      "body_md": "## 一句话抓手\n\n> 可观测性不是多画几张大屏，而是让一次慢请求能从网关追到 NPU、从现象追到原因。\n\n![可观测性体系 图解](learning-asset://topic-diagrams/t14-observability.svg)\n\n## 问题场景\n\n一次慢请求跨过网关、调度器、vLLM、CANN kernel 和流式返回。没有统一 trace 和领域指标，团队只能在多套系统里猜。\n\n## 第一性原理\n\n没有可观测性的系统像黑箱，出了问题只能猜。好的观测像给每个请求贴上追踪单：它经过哪里、等了多久、用了多少 KV、在哪个环节失败，都能还原。\n\n## 机制拆解\n\nMetrics 用于趋势和告警，Logs 用于解释离散事件，Traces 串起跨服务路径。推理平台还需要模型维度、租户维度、请求长度、输出长度、batch、KV 水位、调度队列和硬件利用率等领域指标。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> NPU profiling、CANN kernel timeline、HCCL 通信和应用日志需要通过 request_id、model_id、cluster_id 关联。否则硬件侧看到慢 kernel，服务侧不知道影响哪个租户。\n\n## 推导示例\n\n排障分段：入口耗时、策略耗时、队列等待、prefill、decode、传输、客户端断开。每段至少记录耗时、错误、资源池、模型版本和请求长度。\n\n1. Metrics\n2. Logs\n3. Traces\n4. Events\n5. Dashboards\n6. Action\n\n## 公式/判断\n\n排障链路可以按“入口耗时、排队耗时、prefill、decode、下游返回”拆段。每段都要有耗时、错误和资源标签。这样看到 TTFT 升高时，能判断是网关排队、prefill 饱和，还是模型加载/缓存异常。\n\n## 放到 GTS 场景\n\nGTS 做 MaaS 运维时，观测系统应支持按模型版本、集群、卡型、租户和请求类别下钻。一次容量事故后，团队能用同一套数据复盘：触发信号是什么，路由如何变化，降级是否生效。\n\n## 工程案例\n\n症状：某模型 P99 TTFT 突然升高。观察：网关无异常，prefill 池队列升高，NPU HBM 水位正常。判断：长 prompt 流量突增而非硬件故障。动作：按长度路由和限流。验证：TTFT 分桶恢复。\n\n## 对比与边界\n\n大屏不是可观测性。没有可操作标签、采样策略和保留策略，数据越多排障越慢。专家关注从告警到动作的闭环。\n\n## 常见误区\n\n常见误区是指标很多但没有统一 request_id 或 trace_id。另一个误区是只监控 GPU/NPU 利用率，不监控用户侧 TTFT/ITL，导致资源看似忙，体验却不可解释。\n\n## 专家自检\n\n- 一次请求至少需要哪些 trace 标签？\n- 为什么 NPU 利用率高不能直接说明系统健康？\n- ClickHouse 聚合指标和原始日志各适合解决什么问题？\n\n## 小结\n\n可观测性是平台的反馈系统。它把指标、日志、链路和事件连成闭环，让优化、扩容和故障处理有证据。"
+      "real_world_connection": "内部平台示例：数据采集和ClickHouse处理层可作为观测能力的一部分，但应用层看板必须同时关注隐私、成本和查询性能",
+      "body_md": "## 一句话抓手\n\n> 可观测性不是多画几张大屏，而是让一次慢请求能从网关追到 NPU、从现象追到原因。\n\n![可观测性体系 图解](learning-asset://topic-diagrams/t14-observability.svg)\n\n## 问题场景\n\n一次慢请求跨过网关、调度器、vLLM、CANN kernel 和流式返回。没有统一 trace 和领域指标，团队只能在多套系统里猜。\n\n## 第一性原理\n\n没有可观测性的系统像黑箱，出了问题只能猜。好的观测像给每个请求贴上追踪单：它经过哪里、等了多久、用了多少 KV、在哪个环节失败，都能还原。\n\n## 机制拆解\n\nMetrics 用于趋势和告警，Logs 用于解释离散事件，Traces 串起跨服务路径。推理平台还需要模型维度、租户维度、请求长度、输出长度、batch、KV 水位、调度队列和硬件利用率等领域指标。实时指标应控制低基数标签，请求级日志保留脱敏摘要，trace 采用采样策略，原始 prompt/response 默认不落库或必须加密脱敏。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> NPU profiling、CANN kernel timeline、HCCL 通信和应用日志需要通过 request_id、model_id、cluster_id 关联。否则硬件侧看到慢 kernel，服务侧不知道影响哪个租户。\n\n## 推导示例\n\n排障分段：入口耗时、策略耗时、队列等待、prefill、decode、传输、客户端断开。每段至少记录耗时、错误、资源池、模型版本和请求长度。\n\n1. Metrics\n2. Logs\n3. Traces\n4. Events\n5. Dashboards\n6. Action\n\n## 公式/判断\n\n排障链路可以按“入口耗时、排队耗时、prefill、decode、下游返回”拆段。每段都要有耗时、错误和资源标签。这样看到 TTFT 升高时，能判断是网关排队、prefill 饱和，还是模型加载/缓存异常。\n\n## 放到 GTS 场景\n\nGTS 做 MaaS 运维时，观测系统应支持按模型版本、集群、卡型、租户和请求类别下钻。一次容量事故后，团队能用同一套数据复盘：触发信号是什么，路由如何变化，降级是否生效。\n\n## 工程案例\n\n症状：某模型 P99 TTFT 突然升高。观察：网关无异常，prefill 池队列升高，NPU HBM 水位正常。判断：长 prompt 流量突增而非硬件故障。动作：按长度路由和限流。验证：TTFT 分桶恢复。\n\n## 对比与边界\n\n大屏不是可观测性。没有可操作标签、采样策略、隐私脱敏和保留策略，数据越多排障越慢。高基数 request_id、prompt 摘要和 token 明细要分层治理，专家关注从告警到动作的闭环。\n\n## 常见误区\n\n常见误区是指标很多但没有统一 request_id 或 trace_id。另一个误区是只监控 GPU/NPU 利用率，不监控用户侧 TTFT/ITL，导致资源看似忙，体验却不可解释。\n\n## 专家自检\n\n- 一次请求至少需要哪些 trace 标签？\n- 为什么 NPU 利用率高不能直接说明系统健康？\n- ClickHouse 聚合指标和原始日志各适合解决什么问题？\n\n## 小结\n\n可观测性是平台的反馈系统。它把指标、日志、链路和事件连成闭环，让优化、扩容和故障处理有证据。"
     },
     {
       "id": "T15",
@@ -413,7 +413,7 @@
         "多PDU服务范围：不同PDU在蓝/绿/黄区的访问策略不同"
       ],
       "real_world_connection": "份额制框架解决'谁出硬件谁有保底算力，空闲时共享'的公平问题",
-      "body_md": "## 一句话抓手\n\n> 多租户治理要解决的不是“谁能用”，而是“大家同时用时谁不该互相伤害”。\n\n![多租户资源治理 图解](learning-asset://topic-diagrams/t15-multitenancy.svg)\n\n## 问题场景\n\n多个 PDU 共享千卡资源：生产希望稳定，研发希望弹性，压测希望冲高。多租户治理要把贡献、保底、弹性、计量和隔离变成规则。\n\n## 第一性原理\n\n一个共享集群像联合办公空间。没有配额，少数团队会占满会议室；没有隔离，一个团队的实验会影响生产会议；没有计量，谁用了多少也说不清。\n\n## 机制拆解\n\n多租户治理包括身份和权限、资源配额、优先级队列、模型访问策略、并发和 token 预算、成本计量以及故障隔离。推理场景还要特别关注 KV Cache 和长上下文，因为它们会长时间占用显存。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在昇腾资源池中，租户策略要落到具体卡型、模型、上下文长度、KV 配额和优先级队列。不同 CANN/模型适配版本也可能成为租户可用性的边界。\n\n## 推导示例\n\n可用容量先扣除系统预留和生产保底，再进入弹性池。计量不只算请求数，还要算输入 token、输出 token、占用时长、卡型权重和长上下文系数。\n\n1. Tenant\n2. Quota\n3. Priority\n4. Isolation\n5. Accounting\n6. Fairness\n\n## 公式/判断\n\n公平性不是简单平均，而是按业务等级和承诺分配。可用资源先满足高优先级 SLO，再把剩余容量按配额或权重分给其他租户。超额使用可以排队、限速或转入低成本模型。\n\n## 放到 GTS 场景\n\nGTS 内部平台可以把生产、研发、压测、离线评估分成不同资源池或优先级。生产租户获得稳定 SLA，研发租户获得弹性额度，压测流量必须被标记，避免误伤线上容量判断。\n\n## 工程案例\n\n症状：某大租户消耗大量长上下文，其他租户 TTFT 变差。观察：QPS 配额未超，但 token 和 KV 占用超预期。判断：计量维度错误。动作：引入 token/KV 预算与权重公平队列。验证：租户间 P95 差距收敛。\n\n## 对比与边界\n\n公平不是平均。高优先级生产租户需要保底，低优先级研发应使用弹性容量；计费和策略要透明，否则平台信任会下降。\n\n## 常见误区\n\n常见误区是只按 QPS 配额，不按 token、上下文和并发计量。另一个误区是权限与资源策略分离，导致用户能调用模型，却没有对应容量保障。\n\n## 专家自检\n\n- 为什么多租户要按 token 与上下文计量？\n- 保底配额和弹性池如何共存？\n- 哪些隔离策略能防止压测误伤生产？\n\n## 小结\n\n多租户治理把共享资源变成可承诺、可计量、可隔离的服务。它是 MaaS 从工具走向平台的关键能力。"
+      "body_md": "## 一句话抓手\n\n> 多租户治理要解决的不是“谁能用”，而是“大家同时用时谁不该互相伤害”。\n\n![多租户资源治理 图解](learning-asset://topic-diagrams/t15-multitenancy.svg)\n\n## 问题场景\n\n多个 PDU 共享千卡资源：生产希望稳定，研发希望弹性，压测希望冲高。多租户治理要把贡献、保底、弹性、计量和隔离变成规则。\n\n## 第一性原理\n\n一个共享集群像联合办公空间。没有配额，少数团队会占满会议室；没有隔离，一个团队的实验会影响生产会议；没有计量，谁用了多少也说不清。\n\n## 机制拆解\n\n多租户治理包括身份和权限、资源配额、优先级队列、模型访问策略、并发和 token/KV 预算、成本计量以及故障隔离。推理场景还要特别关注 KV Cache 和长上下文，因为它们会长时间占用显存。策略需要从网关 admission control 传到 scheduler 队列，再回写 usage accounting 形成配额反馈。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在昇腾资源池中，租户策略要落到具体卡型、模型、上下文长度、KV 配额和优先级队列。不同 CANN/模型适配版本也可能成为租户可用性的边界。\n\n## 推导示例\n\n可用容量先扣除系统预留和生产保底，再进入弹性池。计量不只算请求数，还要算输入 token、输出 token、KV block、占用时长、卡型权重和长上下文系数。admission control 与 scheduler 队列要共用这套预算口径。\n\n1. Tenant\n2. Quota\n3. Priority\n4. Isolation\n5. Accounting\n6. Fairness\n\n## 公式/判断\n\n公平性不是简单平均，而是按业务等级和承诺分配。可用资源先满足高优先级 SLO，再把剩余容量按配额或权重分给其他租户。超额使用可以排队、限速或转入低成本模型。\n\n## 放到 GTS 场景\n\nGTS 内部平台可以把生产、研发、压测、离线评估分成不同资源池或优先级。生产租户获得稳定 SLA，研发租户获得弹性额度，压测流量必须被标记，避免误伤线上容量判断。\n\n## 工程案例\n\n症状：某大租户消耗大量长上下文，其他租户 TTFT 变差。观察：QPS 配额未超，但 token 和 KV 占用超预期。判断：计量维度错误。动作：引入 token/KV 预算与权重公平队列。验证：租户间 P95 差距收敛。\n\n## 对比与边界\n\n公平不是平均。高优先级生产租户需要保底，低优先级研发应使用弹性容量；计费和策略要透明，否则平台信任会下降。\n\n## 常见误区\n\n常见误区是只按 QPS 配额，不按 token、上下文和并发计量。另一个误区是权限与资源策略分离，导致用户能调用模型，却没有对应容量保障。\n\n## 专家自检\n\n- 为什么多租户要按 token 与上下文计量？\n- 保底配额和弹性池如何共存？\n- 哪些隔离策略能防止压测误伤生产？\n\n## 小结\n\n多租户治理把共享资源变成可承诺、可计量、可隔离的服务。它是 MaaS 从工具走向平台的关键能力。"
     },
     {
       "id": "T16",
@@ -427,9 +427,9 @@
       ],
       "why": "多模型(T1/T2/T3)需要标准化上下线、灰度、版本管理流程",
       "key_points": [
-        "YAML声明式模型注册表：新模型只改配置不改代码",
-        "模型分级：T1(MiniMax 2.5) → T2(Qwen中等) → T3(Qwen轻量)",
-        "灰度发布：1集群灰度 → 观察指标 → 扩全集群",
+        "声明式模型注册表：新模型尽量通过配置变更进入评估/灰度流程，而不是散落手工步骤",
+        "模型分级：可按能力、成本、风险和适配成熟度划分，而不是固定绑定某个模型家族",
+        "灰度发布：小范围资源池灰度 → 观察质量/性能/错误率 → 扩大集群",
         "上线前三重评估：质量benchmark + 安全对齐 + 性能TPOT/吞吐",
         "蒸馏模型安全风险：社区蒸馏模型可能对齐缺失"
       ],
@@ -454,12 +454,12 @@
       "key_points": [
         "七层架构：硬件 → 算子 → 推理引擎 → 网关 → 可观测性 → 治理 → 业务应用",
         "关键接口：引擎暴露OpenAI兼容API，网关做协议统一，可观测性旁路不侵入主链路",
-        "数据流：用户请求 → 网关(鉴权+路由) → 集群(推理) → 流式响应 → 旁路日志 → ClickHouse",
-        "控制流：运维 → 模型注册表(YAML) → 集群配置同步 → 灰度发布",
-        "物理拓扑(10×64卡) → 逻辑拓扑(4P+4D) → 统一网关(one-shot路由)"
+        "数据流：用户请求 → 网关(鉴权+路由) → 集群(推理) → 流式响应 → 旁路日志/指标",
+        "控制流：运维 → 模型注册表/配置中心 → 集群配置同步 → 灰度发布",
+        "物理拓扑、P/D逻辑拓扑和统一网关路由需要分别建模，不能把示例拓扑当成固定模板"
       ],
       "real_world_connection": "这是40人团队的作战地图，新人第一天应先看懂这张图",
-      "body_md": "## 一句话抓手\n\n> MaaS 平台不是一个推理进程，而是一套把模型能力变成可运营服务的系统。\n\n![MaaS平台架构全景 图解](learning-asset://topic-diagrams/t17-maas-architecture.svg)\n\n## 问题场景\n\n业务只看到一个 OpenAI-compatible API，但平台内部要完成鉴权、计量、路由、调度、推理、观测、降级和模型生命周期。全景图用于统一团队语言。\n\n## 第一性原理\n\n单机推理像开一家小店，MaaS 像经营连锁服务：要有菜单、收银、排队、库存、配送、监控和售后。模型只是菜单上的菜，平台负责让它稳定、可控、可计量地交付。\n\n## 机制拆解\n\n典型 MaaS 架构包括用户入口/API、鉴权计费、网关路由、调度和资源池、推理 runtime、模型仓库、配置中心、观测告警和运维发布。每层都有独立职责，但最终要围绕请求生命周期串起来。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> GTS 的 MaaS 架构需要把 Ascend 硬件池、CANN/vLLM Ascend、自研算子、模型评测和网关治理接成稳定控制面与数据面。硬件能力只有进入平台闭环才产生业务价值。\n\n## 推导示例\n\n请求链路从 API 进入，经过策略检查和路由，进入资源池和 runtime，流式返回 token，同时旁路写入日志、指标和计量。控制链路负责模型注册、配置下发、灰度和回滚。\n\n1. Portal/API\n2. Gateway\n3. Scheduler\n4. Serving Runtime\n5. Model Registry\n6. Observability\n\n## 公式/判断\n\n请求链路可拆成：鉴权与策略检查，选择模型和资源池，进入队列和推理 runtime，流式返回 token，记录指标与用量。架构设计要保证每段都能限流、观测、重试或降级。\n\n## 放到 GTS 场景\n\nGTS 的 MaaS 平台价值在于把 910B 集群、自研算子、vLLM 适配、模型评测和网关治理组合成统一服务。对业务方来说，看到的是稳定 API；对平台方来说，背后是资源效率和 SLA 的持续平衡。\n\n## 工程案例\n\n症状：单模型实例运行正常，但平台高峰期体验不稳。观察：网关路由、租户配额、模型版本和观测数据割裂。判断：缺少平台级闭环。动作：统一资源模型和请求追踪。验证：事故定位时间和容量利用率改善。\n\n## 对比与边界\n\nMaaS 不等于 API wrapper。真正难点在多模型、多租户、多集群和多硬件代际下保持 SLA、成本和安全可控。\n\n## 常见误区\n\n常见误区是把 MaaS 等同于 OpenAI-compatible API。API 只是入口，真正难的是容量、隔离、模型生命周期、流量治理和故障恢复。另一个误区是先做复杂功能，忽略 Phase 1 的学习和认知对齐。\n\n## 专家自检\n\n- MaaS 数据面和控制面分别包含哪些职责？\n- 为什么单机推理成功不代表平台可运营？\n- 哪些模块最能体现内部 AI Infra 团队的不可替代性？\n\n## 小结\n\nMaaS 是模型、硬件、服务治理和运营能力的组合。理解全景架构，才能把单点优化放回平台价值链里。"
+      "body_md": "## 一句话抓手\n\n> MaaS 平台不是一个推理进程，而是一套把模型能力变成可运营服务的系统。\n\n![MaaS平台架构全景 图解](learning-asset://topic-diagrams/t17-maas-architecture.svg)\n\n## 问题场景\n\n业务只看到一个 OpenAI-compatible API，但平台内部要完成鉴权、计量、路由、调度、推理、观测、降级和模型生命周期。全景图用于统一团队语言。\n\n## 第一性原理\n\n单机推理像开一家小店，MaaS 像经营连锁服务：要有菜单、收银、排队、库存、配送、监控和售后。模型只是菜单上的菜，平台负责让它稳定、可控、可计量地交付。\n\n## 机制拆解\n\n典型 MaaS 架构包括用户入口/API、鉴权计费、网关路由、调度和资源池、推理 runtime、模型仓库、配置中心、观测告警和运维发布。每层都有独立职责，但最终要围绕请求生命周期串起来。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> GTS 的 MaaS 架构需要把 Ascend 硬件池、CANN/vLLM Ascend、自研算子、模型评测和网关治理接成稳定控制面与数据面。硬件能力只有进入平台闭环才产生业务价值。\n\n## 推导示例\n\n请求链路从 API 进入，经过策略检查和路由，进入资源池和 runtime，流式返回 token，同时旁路写入日志、指标和计量。控制链路负责模型注册、配置下发、灰度和回滚。\n\n1. Portal/API\n2. Gateway\n3. Scheduler\n4. Serving Runtime\n5. Model Registry\n6. Observability\n\n## 公式/判断\n\n请求链路可拆成：鉴权与策略检查，选择模型和资源池，进入队列和推理 runtime，流式返回 token，记录指标与用量。架构设计要保证每段都能限流、观测、重试或降级。\n\n## 放到 GTS 场景\n\nGTS 的 MaaS 平台价值在于把 910B 集群、自研算子、vLLM 适配、模型评测和网关治理组合成统一服务。对业务方来说，看到的是稳定 API；对平台方来说，背后是资源效率和 SLA 的持续平衡。\n\n## 工程案例\n\n症状：单模型实例运行正常，但平台高峰期体验不稳。观察：网关路由、租户配额、模型版本和观测数据割裂。判断：缺少平台级闭环。动作：统一资源模型和请求追踪。验证：事故定位时间和容量利用率改善。\n\n## 对比与边界\n\nMaaS 不等于 API wrapper。真正难点在多模型、多租户、多集群和多硬件代际下保持 SLA、成本和安全可控。\n\n## 常见误区\n\n常见误区是把 MaaS 等同于 OpenAI-compatible API。API 只是入口，真正难的是容量、隔离、模型生命周期、流量治理和故障恢复。另一个误区是先做复杂功能，忽略基础学习和认知对齐。\n\n## 专家自检\n\n- MaaS 数据面和控制面分别包含哪些职责？\n- 为什么单机推理成功不代表平台可运营？\n- 哪些模块最能体现内部 AI Infra 团队的不可替代性？\n\n## 小结\n\nMaaS 是模型、硬件、服务治理和运营能力的组合。理解全景架构，才能把单点优化放回平台价值链里。"
     },
     {
       "id": "T18",
@@ -473,11 +473,11 @@
       ],
       "why": "技术人员需要理解自己工作的战略价值",
       "key_points": [
-        "核心威胁：绿/黄区逐步放开外部API，内部竞对可部署同款开源模型",
+        "核心威胁：外部API能力增强，内部竞对也可能部署同款开源模型",
         "不可替代价值：统一AI基础设施层——网关、调度、治理、可观测性、安全合规",
         "练兵场价值：千卡集群管理经验是稀缺能力",
-        "域内数据护城河：MTP头α=0.83的接受率来自域内数据",
-        "叙事升级：从'自建推理系统'到'企业AI基础设施统一管理平台'",
+        "域内MTP头的接受率或收益数字应作为特定实验结果记录，不能包装成通用能力",
+        "叙事升级：从“自建推理系统”到“企业AI基础设施统一管理平台”",
         "硬件代际：A2→A3→A5，聚焦平台和业务集成深度"
       ],
       "real_world_connection": "当高层问'外部API能用了为什么还需要你们'时，答案不是'推理更快'而是'全栈安全落地'",

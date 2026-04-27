@@ -18,10 +18,27 @@
   <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
   <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
-      <text x="90" y="178" text-anchor="start" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">生产租户</text><rect x="210" y="150" width="460" height="38" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/><rect x="210" y="150" width="390" height="38" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><text x="690" y="176" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">高优先级</text><text x="90" y="248" text-anchor="start" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">研发租户</text><rect x="210" y="220" width="460" height="38" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/><rect x="210" y="220" width="260" height="38" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><text x="690" y="246" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">弹性额度</text><text x="90" y="318" text-anchor="start" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">压测租户</text><rect x="210" y="290" width="460" height="38" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/><rect x="210" y="290" width="150" height="38" rx="8" fill="#422006" stroke="#facc15" opacity="1"/><text x="690" y="316" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">隔离/限速</text>
-      <rect x="310" y="336" width="340" height="38" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
-<text x="480" y="360" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">计量维度：QPS + tokens + 上下文 + 并发</text>
-
+      <rect x="72" y="148" width="150" height="54" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="147" y="171" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Tenant Policy</text>
+<text x="147" y="193" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">保底/优先级</text>
+      <path d="M 222 175 L 310 175" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="310" y="148" width="166" height="54" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="393" y="171" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Token/KV Budget</text>
+<text x="393" y="193" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">长度/并发</text>
+      <path d="M 476 175 L 564 175" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="564" y="148" width="160" height="54" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="644" y="171" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Admission</text>
+<text x="644" y="193" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">准入控制</text>
+      <path d="M 644 202 L 644 254" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="564" y="254" width="160" height="54" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="644" y="277" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Scheduler Queue</text>
+<text x="644" y="299" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">WFQ/优先级</text>
+      <path d="M 564 281 L 476 281" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="310" y="254" width="166" height="54" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="393" y="277" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Usage Accounting</text>
+<text x="393" y="299" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">token/KV/卡时</text>
+      <path d="M 310 281 L 222 202" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <text x="480" y="348" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">治理闭环：策略 → 预算 → 准入 → 调度 → 计量 → 配额反馈</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：多租户治理让共享资源可承诺、可计量、可隔离。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：多租户治理是 token/KV 预算与调度器准入的闭环。</text>
 </svg>

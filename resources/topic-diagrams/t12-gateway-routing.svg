@@ -24,7 +24,7 @@
       <path d="M 200 209 L 300 209" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
       <rect x="300" y="132" width="240" height="156" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
       <text x="420" y="162" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">路由评分</text>
-      <text x="330" y="192" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 权限硬过滤</text><text x="330" y="218" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• SLA 匹配</text><text x="330" y="244" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 实时负载</text><text x="330" y="270" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 成本偏好</text>
+      <text x="330" y="192" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 硬过滤/能力</text><text x="330" y="218" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• token预算</text><text x="330" y="244" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 归一化负载</text><text x="330" y="270" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="700" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">• 指标新鲜度</text>
       <path d="M 540 209 L 640 172" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 540 209 L 640 246" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
       <rect x="640" y="136" width="220" height="58" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
 <text x="750" y="161" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Cluster A</text>
@@ -32,6 +32,12 @@
       <rect x="640" y="224" width="220" height="58" rx="8" fill="#101b2d" stroke="#fb7185" opacity="1"/>
 <text x="750" y="249" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Cluster B</text>
 <text x="750" y="271" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">高水位 / 降权</text>
+      <rect x="224" y="318" width="210" height="40" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="329" y="343" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">首 token 前：预算重试</text>
+
+      <rect x="526" y="318" width="230" height="40" rx="8" fill="#101b2d" stroke="#fb7185" opacity="1"/>
+<text x="641" y="343" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">流式输出后：不透明重试</text>
+
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：网关把业务意图和实时资源状态合成路由决策。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：网关路由要同时处理请求画像、指标新鲜度和流式重试边界。</text>
 </svg>

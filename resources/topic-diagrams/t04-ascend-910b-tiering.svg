@@ -18,21 +18,26 @@
   <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
   <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
-      <rect x="78" y="146" width="230" height="158" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
-<text x="193" y="221" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B3 资源池</text>
-<text x="193" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">64GB HBM / 长上下文 / 高并发</text>
-      <rect x="104" y="224" width="44" height="58" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="160" y="188" width="44" height="94" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="216" y="246" width="44" height="36" rx="8" fill="#422006" stroke="#facc15" opacity="1"/>
-      <rect x="374" y="146" width="230" height="158" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
-<text x="489" y="221" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B4 资源池</text>
-<text x="489" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">32GB HBM / 中小模型 / 成本优先</text>
-      <rect x="400" y="242" width="44" height="40" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="456" y="214" width="44" height="68" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="512" y="254" width="44" height="28" rx="8" fill="#422006" stroke="#facc15" opacity="1"/>
-      <rect x="684" y="162" width="190" height="52" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
-<text x="779" y="193" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">权重能否放下</text>
+      <rect x="74" y="142" width="210" height="142" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="179" y="209" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B3 资源池</text>
+<text x="179" y="231" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">容量余量 / 长上下文</text>
+      <rect x="328" y="142" width="210" height="142" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="433" y="209" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B4 资源池</text>
+<text x="433" y="231" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">成本优先 / 轻量服务</text>
+      <rect x="620" y="112" width="210" height="34" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="725" y="134" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">权重+KV</text>
+<rect x="620" y="158" width="210" height="34" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
+<text x="725" y="180" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">HBM带宽</text>
+<rect x="620" y="204" width="210" height="34" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="725" y="226" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">互联/故障域</text>
+<rect x="620" y="250" width="210" height="34" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="725" y="272" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">CANN/kernel</text>
+<rect x="620" y="296" width="210" height="34" rx="8" fill="#101b2d" stroke="#fb7185" opacity="1"/>
+<text x="725" y="318" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">SLA/成本</text>
 
-      <rect x="684" y="232" width="190" height="52" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
-<text x="779" y="263" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV 是否够用</text>
-
-      <path d="M 604 224 L 684 188" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 604 224 L 684 258" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <path d="M 284 213 L 620 129" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 538 213 L 620 175" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <path d="M 538 213 L 620 221" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 538 213 L 620 267" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 284 213 L 620 313" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <text x="306" y="330" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">分级不是只看 64GB vs 32GB：要用实测水位和SLA校准</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：硬件分级要同时看容量、带宽、模型画像和业务成本。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：硬件分级要同时看容量、带宽、互联、软件栈和业务成本。</text>
 </svg>

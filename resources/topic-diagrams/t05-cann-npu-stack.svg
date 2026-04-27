@@ -18,14 +18,31 @@
   <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
   <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
-      <rect x="170" y="292" width="620" height="34" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/><text x="480" y="315" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">AI Core: Cube / Vector / Scalar</text><rect x="204" y="250" width="552" height="34" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/><text x="480" y="273" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Runtime</text><rect x="238" y="208" width="484" height="34" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/><text x="480" y="231" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">TBE / Ascend C 自研算子</text><rect x="272" y="166" width="416" height="34" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/><text x="480" y="189" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">GE 图优化</text><rect x="306" y="124" width="348" height="34" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/><text x="480" y="147" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM / PyTorch / 应用</text>
-      <rect x="72" y="150" width="142" height="70" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
-<text x="143" y="181" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">GM → UB</text>
-<text x="143" y="203" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">少搬/复用</text>
-      <rect x="746" y="150" width="142" height="70" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
-<text x="817" y="181" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Tiling</text>
-<text x="817" y="203" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">流水线</text>
-      <path d="M 214 186 L 318 272" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 746 186 L 642 272" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="74" y="138" width="176" height="68" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="162" y="168" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">应用/框架</text>
+<text x="162" y="190" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM / PyTorch</text>
+      <rect x="300" y="116" width="178" height="52" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="389" y="138" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">图执行 GE</text>
+<text x="389" y="160" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">可选路径</text>
+      <rect x="300" y="188" width="178" height="52" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="389" y="210" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Eager / ACL</text>
+<text x="389" y="232" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Runtime 调用</text>
+      <rect x="540" y="138" width="160" height="68" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="620" y="168" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">算子实现</text>
+<text x="620" y="190" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">内置 / TBE / Ascend C</text>
+      <rect x="744" y="138" width="140" height="68" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="814" y="168" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">AI Core</text>
+<text x="814" y="190" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Cube / Vector</text>
+      <path d="M 250 172 L 300 142" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 250 172 L 300 214" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 478 142 L 540 160" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 478 214 L 540 184" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 700 172 L 744 172" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="124" y="286" width="180" height="52" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="214" y="308" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">GM → UB</text>
+<text x="214" y="330" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">少搬/复用</text>
+      <rect x="390" y="286" width="180" height="52" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="480" y="308" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Tiling/Fusion</text>
+<text x="480" y="330" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">流水线</text>
+      <rect x="656" y="286" width="180" height="52" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
+<text x="746" y="308" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Profiling ROI</text>
+<text x="746" y="330" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">主路径优先</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：自研算子价值来自贴合 Ascend 存储层级和执行流水线。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：CANN 是多路径执行与算子实现组合，不是固定 GE→TBE 串行链。</text>
 </svg>

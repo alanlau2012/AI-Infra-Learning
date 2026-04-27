@@ -25,12 +25,17 @@
 <text x="763" y="204" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Decode Pool</text>
 <text x="763" y="226" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">逐 token / 低 ITL / 稳定节奏</text>
       <path d="M 322 208 L 638 208" stroke="#facc15" stroke-width="4" marker-end="url(#arrow)" fill="none"/>
-      <text x="480" y="192" text-anchor="middle" fill="#facc15" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV / 状态传输</text>
+      <text x="480" y="190" text-anchor="middle" fill="#facc15" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV connector / transport</text>
+      <path d="M 638 236 L 322 236" stroke="#34d399" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)" fill="none"/>
+      <text x="480" y="258" text-anchor="middle" fill="#bbf7d0" font-size="13" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Decode ACK + backpressure</text>
       <rect x="104" y="226" width="34" height="18" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="150" y="226" width="34" height="18" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="196" y="226" width="34" height="18" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="242" y="226" width="34" height="18" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/>
       <rect x="672" y="226" width="34" height="18" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="718" y="226" width="34" height="18" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="764" y="226" width="34" height="18" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="810" y="226" width="34" height="18" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/>
-      <rect x="382" y="282" width="196" height="52" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
-<text x="480" y="304" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">4P4D 是配比问题</text>
-<text x="480" y="326" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">由流量画像决定</text>
+      <rect x="326" y="304" width="150" height="46" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="401" y="323" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">水位反馈</text>
+<text x="401" y="345" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">queue / KV</text>
+      <rect x="500" y="304" width="150" height="46" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="575" y="323" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">P:D 重平衡</text>
+<text x="575" y="345" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">由流量画像决定</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：P/D 分离把 prefill 和 decode 两种瓶颈拆开治理。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：P/D 分离难点在 KV 传输、ACK、反压和动态配比闭环。</text>
 </svg>

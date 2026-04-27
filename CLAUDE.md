@@ -43,23 +43,32 @@ npm run build            # vite build + electron-forge package（Win x64）
 npm run deindex:node_modules   # 清理误入库的 node_modules
 ```
 
-### ⚠️ better-sqlite3 / Vitest 兼容性陷阱
+### better-sqlite3 / Vitest ABI 切换（已自动化）
 
-`postinstall` 把 `better-sqlite3` rebuild 成 Electron 的 NODE_MODULE_VERSION（145）。
-但 vitest 用的是系统 Node（一般是 137），版本不匹配会让 `database.test.ts` 全部失败。
+`better-sqlite3` 是 native 模块，编译产物绑定到一个具体 NODE_MODULE_VERSION：
 
-正确切换姿势：
+| 运行时 | NODE_MODULE_VERSION |
+|--------|---------------------|
+| Electron 41 | 145 |
+| 系统 Node 22 | 127 |
+
+`npm test`（vitest）跑在系统 Node 上，`npm start`（Electron）跑在 Electron 内置 Node 上，两者所需 ABI 不同。
+现在两端都有**懒执行守卫**自动处理：
+
+- `prestart` → `scripts/ensure-electron-binding.mjs`：用 `ELECTRON_RUN_AS_NODE=1` 让 Electron 自身 try require binding，命中跳过，未命中调 `@electron/rebuild`
+- `pretest` → `scripts/ensure-node-binding.mjs`：在系统 Node 下 try require，未命中调 `npm rebuild better-sqlite3`
+
+ABI 已匹配时只多花几百毫秒探测，命中再 rebuild。CI 跑 `npm test` 也走 pretest 守卫，与本地行为一致。
+
+需要手动操作时使用显式脚本：
 
 ```bash
-# 跑测试前
-npm rebuild better-sqlite3                    # 编为系统 Node
-npm test
-
-# 跑 npm start 前
-npx electron-rebuild -f -w better-sqlite3     # 编回 Electron
+npm run rebuild:electron    # 编为 Electron ABI（修主进程/IPC 后想直接 npm start）
+npm run rebuild:node        # 编为系统 Node ABI（只跑测试时）
 ```
 
-不要把这层切换抽象成自动 hook，会让 CI 和本地行为分叉。改 SQL/IPC 后人工切一次即可。
+⚠️ 不要再往 `postinstall`、`prebuild` 等其它 hook 上继续叠这层切换；当前两个守卫已覆盖
+启动/测试两条主路径，再叠层只会让 CI 和本地行为分叉。
 
 ---
 

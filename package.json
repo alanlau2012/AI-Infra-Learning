@@ -4,13 +4,17 @@
   "description": "Windows Electron MVP for the AI Infra learning system",
   "main": ".vite/build/main.js",
   "scripts": {
+    "prestart": "node ./scripts/ensure-electron-binding.mjs",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "pretest": "node ./scripts/ensure-node-binding.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "vite build && electron-forge package --platform=win32 --arch=x64",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:node": "npm rebuild better-sqlite3",
     "deindex:node_modules": "node ./scripts/untrack-node_modules.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },

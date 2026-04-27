@@ -122,10 +122,12 @@ describe('App', () => {
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: '核心判断' })).toBeInTheDocument();
     expect(screen.getByText('先判断瓶颈是在算力还是带宽，再决定后续优化路线。')).toBeInTheDocument();
-    expect(screen.getByText('总进度 1/21')).toBeInTheDocument();
+    expect(screen.getByLabelText('学习进度概览')).toBeInTheDocument();
+    expect(screen.getByText('总进度')).toBeInTheDocument();
+    expect(screen.getByText('5%')).toBeInTheDocument();
+    expect(screen.getByText('1/21 已完成')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: '总学习进度' })).toHaveAttribute('value', '5');
     const stageProgress = screen.getByLabelText('阶段进度');
-    expect(within(stageProgress).getByText('阶段进度')).toBeInTheDocument();
     expect(within(stageProgress).getByText('第一性原理')).toBeInTheDocument();
     expect(within(stageProgress).getByText('0/2')).toBeInTheDocument();
     expect(within(stageProgress).getByText('昇腾硬件与推理引擎')).toBeInTheDocument();

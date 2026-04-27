@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ProgressSummary,
   RoadmapGraph,
@@ -8,6 +8,7 @@ import type {
   TopicDetail
 } from '../shared/types';
 import RoadmapView from './components/roadmap/RoadmapView';
+import ProgressOverview from './components/ProgressOverview';
 import Sidebar from './components/Sidebar';
 import TopicDetailView from './components/TopicDetailView';
 import ViewTabs, { type LearningView } from './components/ViewTabs';
@@ -102,14 +103,6 @@ export default function App() {
     }
   }
 
-  const completedPercent = useMemo(() => {
-    if (!progress || progress.totalTopics === 0) {
-      return 0;
-    }
-
-    return Math.round((progress.completedTopics / progress.totalTopics) * 100);
-  }, [progress]);
-
   if (isLoading) {
     return (
       <main className="loading-shell">
@@ -138,48 +131,14 @@ export default function App() {
 
       <section className="content">
         <header className="topbar">
-          <div>
-            <span className="eyebrow">Phase 1 MVP</span>
-            <h2>知识点学习</h2>
-          </div>
-          <div className="topbar-right">
+          <div className="topbar-main">
+            <div>
+              <span className="eyebrow">Phase 1 MVP</span>
+              <h2>知识点学习</h2>
+            </div>
             <ViewTabs view={view} onChange={setView} />
-            {progress ? (
-              <div className="progress-panel">
-                <div className="progress-box">
-                  <span>总进度 {progress.completedTopics}/{progress.totalTopics}</span>
-                  <progress aria-label="总学习进度" max={100} value={completedPercent} />
-                </div>
-                <div className="stage-progress-box" aria-label="阶段进度">
-                  <strong>阶段进度</strong>
-                  <div className="stage-progress-list">
-                    {progress.stageProgress.map((item) => {
-                      const stagePercent =
-                        item.totalTopics === 0
-                          ? 0
-                          : Math.round((item.completedTopics / item.totalTopics) * 100);
-
-                      return (
-                        <div className="stage-progress-item" key={item.stageId}>
-                          <div className="stage-progress-label">
-                            <span>{item.stageName}</span>
-                            <span>
-                              {item.completedTopics}/{item.totalTopics}
-                            </span>
-                          </div>
-                          <progress
-                            aria-label={`阶段 ${item.stageId} 进度`}
-                            max={100}
-                            value={stagePercent}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
+          {progress ? <ProgressOverview progress={progress} /> : null}
         </header>
 
         {view === 'roadmap' && roadmap ? (

@@ -551,3 +551,14 @@ button {
   color: #5eead4;
   text-decoration: underline;
 }
+
+.markdown-body img {
+  display: block;
+  width: 100%;
+  max-width: 860px;
+  height: auto;
+  margin: 16px 0 20px;
+  border: 1px solid #263143;
+  border-radius: 8px;
+  background: #0b1220;
+}

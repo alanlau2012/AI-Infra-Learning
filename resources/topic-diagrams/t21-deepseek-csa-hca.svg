@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">DeepSeek V4的CSA/HCA混合注意力 图解</title>
+  <desc id="desc">DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T21</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">DeepSeek V4的CSA/HCA混合注意力</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。</text>
+  
+      <rect x="80" y="150" width="132" height="58" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="146" y="175" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">原始 KV</text>
+<text x="146" y="197" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1M context</text>
+      <path d="M 212 180 L 330 152" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 212 180 L 330 264" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="330" y="122" width="190" height="64" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="425" y="150" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">CSA</text>
+<text x="425" y="172" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">4x 压缩 + Top-K 索引</text>
+      <rect x="330" y="236" width="190" height="64" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="425" y="264" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">HCA</text>
+<text x="425" y="286" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">128x 压缩 + dense</text>
+      <path d="M 520 154 L 680 154" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 520 268 L 680 268" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="680" y="126" width="190" height="56" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
+<text x="775" y="150" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">精确稀疏检索</text>
+<text x="775" y="172" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">找相关历史</text>
+      <rect x="680" y="240" width="190" height="56" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="775" y="264" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">低成本全局视野</text>
+<text x="775" y="286" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">看压缩全局</text>
+      <path d="M 250 330 L 838 330" stroke="#fb7185" stroke-width="3" fill="none"/>
+      <text x="544" y="354" text-anchor="middle" fill="#fecaca" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Sliding Window：最近 token 保持局部细节，不被过度压缩</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：DeepSeek V4 用压缩、索引和滑动窗口组合治理超长上下文。</text>
+</svg>

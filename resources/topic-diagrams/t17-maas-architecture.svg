@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">MaaS平台架构全景 图解</title>
+  <desc id="desc">MaaS 平台不是一个推理进程，而是一套把模型能力变成可运营服务的系统。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T17</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MaaS平台架构全景</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MaaS 平台不是一个推理进程，而是一套把模型能力变成可运营服务的系统。</text>
+  
+      <rect x="150" y="132" width="660" height="32" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/><text x="480" y="154" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Portal / OpenAI API</text><rect x="178" y="176" width="604" height="32" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/><text x="480" y="198" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Gateway / Auth / Billing</text><rect x="206" y="220" width="548" height="32" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/><text x="480" y="242" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Scheduler / Resource Pool</text><rect x="234" y="264" width="492" height="32" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/><text x="480" y="286" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Serving Runtime / vLLM</text><rect x="262" y="308" width="436" height="32" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/><text x="480" y="330" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Model Registry / Observability</text>
+      <path d="M 480 164 L 480 176" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 480 208 L 480 220" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 480 252 L 480 264" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 480 296 L 480 308" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <text x="480" y="362" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MaaS = API 入口 + 治理 + 调度 + 推理 runtime + 运营闭环</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：MaaS 是把模型能力变成可运营服务的系统。</text>
+</svg>

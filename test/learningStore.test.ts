@@ -36,7 +36,7 @@ describe('learning store', () => {
     expect(outline.flatMap((stage) => stage.topics)).toHaveLength(21);
     expect(topic.name).toContain('Compute-bound');
     expect(topic.keyPoints).toHaveLength(seed.topics[0].key_points.length);
-    expect(topic.bodyMd).toContain('所有推理优化决策的根基');
+    expect(topic.bodyMd).toContain('推理优化先不要问');
     expect(topic.bodyMd).not.toMatch(/\?{4,}/);
     expect(topic.status).toBe('not_started');
     expect(progress.totalTopics).toBe(21);
@@ -129,5 +129,19 @@ describe('learning store', () => {
     expect(graph.mainTrack).toEqual(seed.learning_paths?.main_track?.sequence);
     expect(graph.edges).toContainEqual({ from: 'T01', to: 'T02' });
     expect(graph.edges).toContainEqual({ from: 'T17', to: 'T18' });
+  });
+
+  it('ships expanded markdown content and a bundled diagram for every topic', () => {
+    const diagramPattern = /!\[[^\]]+\]\(learning-asset:\/\/topic-diagrams\/([a-z0-9-]+\.svg)\)/;
+
+    for (const topic of seed.topics) {
+      expect(topic.body_md?.trim(), topic.id).toBeTruthy();
+      expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
+      expect(topic.body_md, topic.id).toContain('## 一句话抓手');
+      expect(topic.body_md, topic.id).toContain('## 放到 GTS 场景');
+      const match = topic.body_md?.match(diagramPattern);
+      expect(match?.[1], topic.id).toBeTruthy();
+      expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);
+    }
   });
 });

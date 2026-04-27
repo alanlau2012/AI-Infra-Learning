@@ -37,13 +37,19 @@ describe('renderMarkdown — XSS sanitization', () => {
     expect(dom.querySelectorAll('object')).toHaveLength(0);
   });
 
-  it('strips data: image src (only http(s) and relative URLs allowed)', () => {
+  it('strips data: image src and other non-bundled image URLs', () => {
     const html = renderMarkdown('![x](data:image/png;base64,AAAA)');
     const dom = new DOMParser().parseFromString(html, 'text/html');
     const img = dom.querySelector('img');
     if (img) {
       const src = img.getAttribute('src') ?? '';
       expect(src.startsWith('data:')).toBe(false);
+    }
+
+    const externalHtml = renderMarkdown('![x](https://example.com/x.png) ![y](file:///tmp/x.svg)');
+    const externalDom = new DOMParser().parseFromString(externalHtml, 'text/html');
+    for (const image of Array.from(externalDom.querySelectorAll('img'))) {
+      expect(image.getAttribute('src')).toBeNull();
     }
   });
 
@@ -63,6 +69,17 @@ describe('renderMarkdown — XSS sanitization', () => {
 });
 
 describe('renderMarkdown — content rendering', () => {
+  it('allows bundled learning-asset topic diagram images only', () => {
+    const html = renderMarkdown(
+      '![diagram](learning-asset://topic-diagrams/t01-roofline.svg)\n\n![bad](learning-asset://topic-diagrams/../secret.svg)'
+    );
+    const dom = new DOMParser().parseFromString(html, 'text/html');
+    const images = Array.from(dom.querySelectorAll('img'));
+
+    expect(images[0]?.getAttribute('src')).toBe('learning-asset://topic-diagrams/t01-roofline.svg');
+    expect(images[1]?.getAttribute('src')).toBeNull();
+  });
+
   it('renders headings, lists, blockquotes and tables', () => {
     const md = [
       '# H1',

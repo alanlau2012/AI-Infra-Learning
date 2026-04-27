@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">模型生命周期管理 图解</title>
+  <desc id="desc">模型生命周期管理的目标，是让模型升级像工程发布，而不是一次高风险手工替换。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T16</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">模型生命周期管理</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">模型生命周期管理的目标，是让模型升级像工程发布，而不是一次高风险手工替换。</text>
+  
+      <rect x="416" y="114" width="128" height="52" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="480" y="145" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Register</text>
+<rect x="586" y="180" width="128" height="52" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="650" y="211" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Evaluate</text>
+<rect x="526" y="292" width="128" height="52" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="590" y="323" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Deploy</text>
+<rect x="306" y="292" width="128" height="52" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="370" y="323" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Monitor</text>
+<rect x="246" y="180" width="128" height="52" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="310" y="211" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Rollback</text>
+
+      <path d="M 544 154 L 600 190" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 658 232 L 616 292" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 526 318 L 434 318" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 370 292 L 314 232" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 374 190 L 436 154" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <circle cx="480" cy="232" r="44" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="480" y="237" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Model</text>
+      <text x="480" y="374" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">模型上线是一条可回滚流水线，不是一次手工替换。</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：生命周期管理把模型当作生产制品治理。</text>
+</svg>

@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import { pathToFileURL } from 'node:url';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from 'electron';
 import type { SeedData, StudyStatus } from '../shared/types';
 import { createLearningStore, type LearningStore } from './learningStore';
-import { getProgressPath, getSeedDataPath } from './paths';
+import { getProgressPath, getSeedDataPath, getTopicDiagramPath } from './paths';
 import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from './security';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -14,6 +15,17 @@ const SHOW_WINDOW_FALLBACK_MS = 5_000;
 
 let mainWindow: BrowserWindow | null = null;
 let learningStore: LearningStore | null = null;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'learning-asset',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true
+    }
+  }
+]);
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -38,6 +50,7 @@ if (!gotSingleInstanceLock) {
     try {
       const isDevelopment = Boolean(MAIN_WINDOW_VITE_DEV_SERVER_URL);
       installCsp(isDevelopment);
+      installLearningAssetProtocol();
       learningStore = openLearningStore();
       registerIpcHandlers(() => {
         if (!learningStore) {
@@ -183,6 +196,20 @@ function loadDevServerWithRetry(window: BrowserWindow, url: string) {
   });
 
   attemptLoad();
+}
+
+function installLearningAssetProtocol() {
+  protocol.handle('learning-asset', (request) => {
+    try {
+      const assetPath = getTopicDiagramPath(request.url);
+      if (!fs.existsSync(assetPath)) {
+        return new Response('Learning asset not found', { status: 404 });
+      }
+      return net.fetch(pathToFileURL(assetPath).toString());
+    } catch {
+      return new Response('Invalid learning asset URL', { status: 400 });
+    }
+  });
 }
 
 function installCsp(isDevelopment: boolean) {

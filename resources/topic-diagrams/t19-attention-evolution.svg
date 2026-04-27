@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">注意力机制演进：从MHA到线性注意力 图解</title>
+  <desc id="desc">Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T19</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">注意力机制演进：从MHA到线性注意力</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。</text>
+  
+      <path d="M 96 236 L 820 236" stroke="#475569" stroke-width="2" fill="none"/>
+      <circle cx="120" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="120" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1</text>
+        <text x="120" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MHA</text>
+        <rect x="94" y="260" width="52" height="118" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="120" y="398" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV 大</text><circle cx="256" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="256" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">2</text>
+        <text x="256" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MQA</text>
+        <rect x="230" y="260" width="52" height="82" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="256" y="362" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">更小</text><circle cx="392" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="392" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3</text>
+        <text x="392" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">GQA</text>
+        <rect x="366" y="260" width="52" height="64" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="392" y="344" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">更小</text><circle cx="528" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="528" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">4</text>
+        <text x="528" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MLA</text>
+        <rect x="502" y="260" width="52" height="44" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <text x="528" y="324" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">更小</text><circle cx="664" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="664" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">5</text>
+        <text x="664" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Linear</text>
+        <rect x="638" y="260" width="52" height="28" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <text x="664" y="308" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">更小</text><circle cx="800" cy="236" r="18" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
+<text x="800" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">6</text>
+        <text x="800" y="202" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Hybrid</text>
+        <rect x="774" y="260" width="52" height="48" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <text x="800" y="328" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">混合</text>
+      <text x="472" y="156" text-anchor="middle" fill="#5eead4" font-size="17" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">主线：减少完整历史 KV 的保存和读取成本</text>
+      <rect x="640" y="128" width="210" height="54" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="745" y="151" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">表达力 vs 成本</text>
+<text x="745" y="173" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">不是单一路线通吃</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：Attention 演进是在 KV 成本和精确回看能力之间取平衡。</text>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">Gated DeltaNet混合架构：Qwen3.5/3.6的做法 图解</title>
+  <desc id="desc">Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T20</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Gated DeltaNet混合架构：Qwen3.5/3.6的做法</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。</text>
+  
+      <rect x="88" y="150" width="164" height="150" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/>
+        <rect x="106" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="148" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="190" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <rect x="232" y="174" width="34" height="74" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="157" y="268" text-anchor="middle" fill="#bbf7d0" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3 × DeltaNet</text>
+        <text x="228" y="268" text-anchor="middle" fill="#bfdbfe" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1 × Attn</text><rect x="292" y="150" width="164" height="150" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/>
+        <rect x="310" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="352" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="394" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <rect x="436" y="174" width="34" height="74" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="361" y="268" text-anchor="middle" fill="#bbf7d0" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3 × DeltaNet</text>
+        <text x="432" y="268" text-anchor="middle" fill="#bfdbfe" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1 × Attn</text><rect x="496" y="150" width="164" height="150" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/>
+        <rect x="514" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="556" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="598" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <rect x="640" y="174" width="34" height="74" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="565" y="268" text-anchor="middle" fill="#bbf7d0" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3 × DeltaNet</text>
+        <text x="636" y="268" text-anchor="middle" fill="#bfdbfe" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1 × Attn</text><rect x="700" y="150" width="164" height="150" rx="8" fill="#0f172a" stroke="#334155" opacity="1"/>
+        <rect x="718" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="760" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="802" y="174" width="34" height="74" rx="5" fill="#064e3b" stroke="#34d399" opacity="1"/>
+        <rect x="844" y="174" width="34" height="74" rx="5" fill="#172554" stroke="#60a5fa" opacity="1"/>
+        <text x="769" y="268" text-anchor="middle" fill="#bbf7d0" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3 × DeltaNet</text>
+        <text x="840" y="268" text-anchor="middle" fill="#bfdbfe" font-size="12" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">1 × Attn</text>
+      <text x="480" y="130" text-anchor="middle" fill="#f8fafc" font-size="17" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">3:1 混合层：多数层固定状态，少数层保留 full attention</text>
+      <rect x="150" y="324" width="250" height="42" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="275" y="350" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">传统 KV 只来自少数 attention 层</text>
+
+      <rect x="560" y="324" width="250" height="42" rx="8" fill="#101b2d" stroke="#34d399" opacity="1"/>
+<text x="685" y="350" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">DeltaNet 用固定状态降低长上下文成本</text>
+
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：Qwen 混合架构把长上下文成本集中到少数 full attention 层。</text>
+</svg>

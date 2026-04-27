@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">竞争力定位与硬件代际策略 图解</title>
+  <desc id="desc">硬件代际策略不是追最新芯片，而是判断未来模型趋势会把瓶颈推向哪里。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T18</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">竞争力定位与硬件代际策略</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">硬件代际策略不是追最新芯片，而是判断未来模型趋势会把瓶颈推向哪里。</text>
+  
+      <circle cx="480" cy="236" r="42" fill="#064e3b" stroke="#5eead4" stroke-width="2"/>
+<text x="480" y="241" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">策略</text>
+      <path d="M 480 236 L 480 118" stroke="#475569" stroke-width="2" fill="none"/><rect x="408" y="94" width="144" height="48" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
+<text x="480" y="123" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">模型趋势</text>
+<path d="M 480 236 L 679.7218684219822 199.5359946637562" stroke="#475569" stroke-width="2" fill="none"/><rect x="607.7218684219822" y="175.5359946637562" width="144" height="48" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="679.7218684219822" y="204.5359946637562" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">硬件路线</text>
+<path d="M 480 236 L 603.4349029814193 331.4640053362438" stroke="#475569" stroke-width="2" fill="none"/><rect x="531.4349029814193" y="307.4640053362438" width="144" height="48" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="603.4349029814193" y="336.4640053362438" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">软件栈</text>
+<path d="M 480 236 L 356.5650970185807 331.4640053362438" stroke="#475569" stroke-width="2" fill="none"/><rect x="284.5650970185807" y="307.4640053362438" width="144" height="48" rx="8" fill="#101b2d" stroke="#fb7185" opacity="1"/>
+<text x="356.5650970185807" y="336.4640053362438" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">成本/SLA</text>
+<path d="M 480 236 L 280.2781315780178 199.53599466375618" stroke="#475569" stroke-width="2" fill="none"/><rect x="208.2781315780178" y="175.53599466375618" width="144" height="48" rx="8" fill="#101b2d" stroke="#a78bfa" opacity="1"/>
+<text x="280.2781315780178" y="204.53599466375618" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">团队能力</text>
+
+      <text x="480" y="372" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">竞争力来自硬件能力 × 软件适配速度 × 业务匹配度</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：硬件代际策略要跟模型结构和平台软件一起判断。</text>
+</svg>

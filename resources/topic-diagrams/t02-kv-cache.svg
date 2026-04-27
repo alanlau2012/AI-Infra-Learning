@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">KV Cache与显存计算 图解</title>
+  <desc id="desc">KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="372" rx="10" fill="#0b1220" stroke="#263143"/>
+  <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T02</text>
+  <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV Cache与显存计算</text>
+  <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。</text>
+  
+      <rect x="60" y="146" width="360" height="72" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
+<text x="240" y="178" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV Cache = 2 × layers × kv_heads × head_dim</text>
+<text x="240" y="200" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">× seq_len × batch × bytes</text>
+      <path d="M 420 182 L 510 182" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+      <rect x="540" y="142" width="72" height="178" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/>
+      <rect x="620" y="188" width="72" height="132" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/>
+      <rect x="700" y="232" width="72" height="88" rx="8" fill="#422006" stroke="#facc15" opacity="1"/>
+      <text x="576" y="342" text-anchor="middle" fill="#dbe7f6" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">权重</text>
+      <text x="656" y="342" text-anchor="middle" fill="#dbe7f6" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">KV</text>
+      <text x="736" y="342" text-anchor="middle" fill="#dbe7f6" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">运行时</text>
+      <text x="600" y="130" text-anchor="start" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">显存预算不是只看模型文件</text>
+      <rect x="80" y="250" width="116" height="52" rx="8" fill="#101b2d" stroke="#38bdf8" opacity="1"/>
+<text x="138" y="272" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">GQA/MQA</text>
+<text x="138" y="294" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">减少 KV 头</text>
+      <rect x="220" y="250" width="116" height="52" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
+<text x="278" y="272" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">长上下文</text>
+<text x="278" y="294" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">线性放大</text>
+    
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：KV Cache 随上下文和并发线性增长，是容量规划的核心账单。</text>
+</svg>

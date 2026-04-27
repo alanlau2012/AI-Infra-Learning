@@ -42,13 +42,14 @@ const md: MarkdownIt = new MarkdownIt({
   }
 });
 
-const ALLOWED_URI_SCHEMES = /^(?:https?|mailto):/i;
+const ALLOWED_LINK_URI = /^(?:https?|mailto):/i;
+const LEARNING_ASSET_IMAGE = /^learning-asset:\/\/topic-diagrams\/[a-z0-9-]+\.svg$/i;
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   // 拒绝任何非白名单 URL scheme（包含 javascript:、data: 等），同时给所有外链强制 noopener。
   if ('href' in node) {
     const href = (node as HTMLAnchorElement).getAttribute('href');
-    if (href && !href.startsWith('#') && !href.startsWith('/') && !ALLOWED_URI_SCHEMES.test(href)) {
+    if (href && !href.startsWith('#') && !href.startsWith('/') && !ALLOWED_LINK_URI.test(href)) {
       node.removeAttribute('href');
     } else if (href && /^https?:/i.test(href)) {
       (node as HTMLAnchorElement).setAttribute('rel', 'noopener noreferrer');
@@ -56,10 +57,10 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     }
   }
 
-  // DOMPurify 默认对 <img src="data:..."> 较宽松；这里硬性拒绝任何 data: URL。
+  // Only bundled topic diagrams are allowed as Markdown images.
   if (node instanceof HTMLImageElement) {
     const src = node.getAttribute('src') ?? '';
-    if (src && !src.startsWith('/') && !src.startsWith('#') && !ALLOWED_URI_SCHEMES.test(src)) {
+    if (src && !LEARNING_ASSET_IMAGE.test(src)) {
       node.removeAttribute('src');
     }
   }
@@ -69,7 +70,7 @@ const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
   FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'link', 'meta'],
   FORBID_ATTR: ['style', 'srcset', 'autoplay', 'sandbox', 'formaction'],
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/])/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|learning-asset:\/\/topic-diagrams\/[a-z0-9-]+\.svg|[#/])/i,
   RETURN_TRUSTED_TYPE: false
 };
 

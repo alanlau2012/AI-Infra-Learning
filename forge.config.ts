@@ -9,7 +9,7 @@ const config: ForgeConfig = {
   outDir: process.env.FORGE_OUT_DIR ?? path.join(os.tmpdir(), 'ai-infra-learning-out'),
   packagerConfig: {
     asar: true,
-    extraResource: ['resources/seed_data.json']
+    extraResource: ['resources/seed_data.json', 'resources/topic-diagrams']
   },
   makers: [
     new MakerSquirrel({

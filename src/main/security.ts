@@ -18,12 +18,12 @@ export function getContentSecurityPolicy(isDevelopment: boolean) {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: learning-asset:",
       "connect-src 'self' http://localhost:* ws://localhost:*"
     ].join('; ');
   }
 
-  return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'";
+  return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: learning-asset:; connect-src 'self'";
 }
 
 export function isValidStudyStatus(status: string): status is StudyStatus {

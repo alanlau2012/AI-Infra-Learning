@@ -26,7 +26,7 @@ describe('Electron security defaults', () => {
     const prodCsp = getContentSecurityPolicy(false);
 
     expect(prodCsp).toBe(
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'"
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: learning-asset:; connect-src 'self'"
     );
     expect(prodCsp).not.toContain("'unsafe-inline'");
     expect(prodCsp).not.toContain("'unsafe-eval'");

@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T03</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MoE vs Dense的推理差异</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MoE 的直觉是“只请几位专家干活”，但所有专家的办公楼往往还得租下来。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <circle cx="110" cy="230" r="34" fill="#172554" stroke="#60a5fa" stroke-width="2"/>
 <text x="110" y="235" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Token</text>
@@ -46,5 +48,5 @@
       <text x="88" y="322" text-anchor="start" fill="#facc15" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">总参数占显存</text>
       <text x="560" y="322" text-anchor="start" fill="#5eead4" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">激活参数决定每 token 计算量</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：MoE 省的是每 token 计算，不自动省掉所有常驻权重和通信。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：MoE 省的是每 token 计算，不自动省掉所有常驻权重和通信。</text>
 </svg>

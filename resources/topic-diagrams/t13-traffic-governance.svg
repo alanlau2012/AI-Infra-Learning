@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T13</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">流量治理：限流、分级与降级</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">流量治理的目标不是拒绝用户，而是在资源有限时保护核心体验和系统生命线。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="140" y="130" width="680" height="50" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/><text x="480" y="162" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">入口流量</text>
       <rect x="190" y="198" width="580" height="46" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/><text x="480" y="228" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">配额 / 限流</text>
@@ -22,5 +24,5 @@
       <rect x="330" y="326" width="300" height="36" rx="8" fill="#101b2d" stroke="#fb7185" opacity="1"/><text x="480" y="350" text-anchor="middle" fill="#dbe7f6" font-size="14" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">降级 / 熔断 / 恢复</text>
       <path d="M 480 180 L 480 198" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 480 244 L 480 262" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 480 308 L 480 326" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：流量治理是在压力下保护核心 SLA 和系统生命线。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：流量治理是在压力下保护核心 SLA 和系统生命线。</text>
 </svg>

@@ -15,14 +15,16 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T04</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Ascend 910B系列硬件规格与分级策略</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">硬件分级不是贴标签，而是把模型的显存、带宽和延迟画像放到合适的卡上。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="78" y="146" width="230" height="158" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
 <text x="193" y="221" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B3 资源池</text>
-<text x="193" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">大模型 / 长上下文 / 高并发</text>
+<text x="193" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">64GB HBM / 长上下文 / 高并发</text>
       <rect x="104" y="224" width="44" height="58" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="160" y="188" width="44" height="94" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="216" y="246" width="44" height="36" rx="8" fill="#422006" stroke="#facc15" opacity="1"/>
       <rect x="374" y="146" width="230" height="158" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
 <text x="489" y="221" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">910B4 资源池</text>
-<text x="489" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">中小模型 / 成本优先 / 实验</text>
+<text x="489" y="243" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">32GB HBM / 中小模型 / 成本优先</text>
       <rect x="400" y="242" width="44" height="40" rx="8" fill="#172554" stroke="#60a5fa" opacity="1"/><rect x="456" y="214" width="44" height="68" rx="8" fill="#064e3b" stroke="#34d399" opacity="1"/><rect x="512" y="254" width="44" height="28" rx="8" fill="#422006" stroke="#facc15" opacity="1"/>
       <rect x="684" y="162" width="190" height="52" rx="8" fill="#101b2d" stroke="#facc15" opacity="1"/>
 <text x="779" y="193" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">权重能否放下</text>
@@ -32,5 +34,5 @@
 
       <path d="M 604 224 L 684 188" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/><path d="M 604 224 L 684 258" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：硬件分级要同时看容量、带宽、模型画像和业务成本。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：硬件分级要同时看容量、带宽、模型画像和业务成本。</text>
 </svg>

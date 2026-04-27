@@ -44,6 +44,11 @@ const md: MarkdownIt = new MarkdownIt({
 
 const ALLOWED_LINK_URI = /^(?:https?|mailto):/i;
 const LEARNING_ASSET_IMAGE = /^learning-asset:\/\/topic-diagrams\/[a-z0-9-]+\.svg$/i;
+const CALLOUT_LABELS: Record<string, string> = {
+  ASCEND: '昇腾落点',
+  NOTE: '提示',
+  WARNING: '注意'
+};
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   // 拒绝任何非白名单 URL scheme（包含 javascript:、data: 等），同时给所有外链强制 noopener。
@@ -80,5 +85,37 @@ export function renderMarkdown(input: string): string {
   }
 
   const rawHtml = md.render(input);
-  return DOMPurify.sanitize(rawHtml, SANITIZE_CONFIG) as unknown as string;
+  const sanitized = DOMPurify.sanitize(rawHtml, SANITIZE_CONFIG) as unknown as string;
+  return enhanceCallouts(sanitized);
+}
+
+function enhanceCallouts(html: string): string {
+  if (typeof document === 'undefined') {
+    return html;
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  for (const quote of Array.from(template.content.querySelectorAll('blockquote'))) {
+    const firstParagraph = quote.querySelector('p');
+    const rawText = firstParagraph?.textContent ?? '';
+    const match = rawText.match(/^\[!(ASCEND|NOTE|WARNING)\]\s*([\s\S]*)$/);
+    if (!firstParagraph || !match) {
+      continue;
+    }
+
+    const type = match[1].toLowerCase();
+    const label = CALLOUT_LABELS[match[1]] ?? match[1];
+    const content = match[2].trim();
+    const labelNode = document.createElement('strong');
+    labelNode.textContent = label;
+
+    firstParagraph.textContent = content;
+    firstParagraph.prepend(document.createTextNode(' '));
+    firstParagraph.prepend(labelNode);
+    quote.classList.add('callout', `callout-${type}`);
+  }
+
+  return template.innerHTML;
 }

@@ -123,4 +123,14 @@ describe('renderMarkdown — content rendering', () => {
     const html = renderMarkdown('use `foo` here');
     expect(html).toMatch(/<code>foo<\/code>/);
   });
+
+  it('turns safe callout markers into styled blockquotes', () => {
+    const html = renderMarkdown('> [!ASCEND]\n> 关注 HBM 水位和 CANN kernel。');
+    const dom = new DOMParser().parseFromString(html, 'text/html');
+    const callout = dom.querySelector('blockquote.callout-ascend');
+
+    expect(callout).not.toBeNull();
+    expect(callout?.textContent).toContain('昇腾落点');
+    expect(callout?.textContent).toContain('关注 HBM 水位和 CANN kernel。');
+  });
 });

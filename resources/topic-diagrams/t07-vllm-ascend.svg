@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T07</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM昇腾适配与GTS定制</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM 适配昇腾不是把 CUDA 名字替换成 CANN，而是把调度假设、算子能力和内存模型重新对齐。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="72" y="142" width="176" height="70" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
 <text x="160" y="173" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM 语义</text>
@@ -35,5 +37,5 @@
 <text x="735" y="301" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">替换热点 kernel</text>
 <text x="735" y="323" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">端到端收益</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：适配不是平移代码，而是在稳定接口下替换关键瓶颈。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：适配不是平移代码，而是在稳定接口下替换关键瓶颈。</text>
 </svg>

@@ -240,6 +240,177 @@ const topicContent = {
   }
 };
 
+const expertAddons = {
+  T01: {
+    scene: '线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。',
+    ascend: '在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。',
+    derivation: '先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上；若高于拐点，再优先看矩阵核与并行度。',
+    caseStudy: '症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。',
+    boundary: 'NVIDIA Tensor Core 与 Ascend Cube 的峰值口径不同，但 Roofline 方法相同：算力、带宽和数据复用决定上限。不要把 GPU 上的优化结论原样迁移到 NPU，先确认瓶颈形态是否一致。',
+    questions: ['为什么 prefill 和 decode 会落在 Roofline 的不同区域？', '如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？', '一条 TPOT 告警需要哪些硬件与调度指标才能闭环？']
+  },
+  T02: {
+    scene: '业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。',
+    ascend: '910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。',
+    derivation: '用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。',
+    caseStudy: '症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。',
+    boundary: 'Dense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。',
+    questions: ['为什么 MoE 激活参数小不代表显存账也小？', '910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？', 'KV 量化与权重量化分别改善哪一部分显存账？']
+  },
+  T03: {
+    scene: '团队评估一个 A3B MoE 模型用于 Agent 场景，单 token 计算看似接近小模型，但部署时发现总权重、expert 并行和路由通信成为主约束。',
+    ascend: 'Ascend 多卡部署 MoE 时要关注 expert 放置、HCCL/All-to-All 路径、token 分发和热点 expert。算子层面不只优化 FFN，还要观察 router、gather/scatter 与通信同步。',
+    derivation: '把成本拆成常驻权重、激活计算、路由开销、通信开销四项。A3B 只说明每 token 激活约 3B 参数，不说明总权重和 expert 分布；一旦跨卡，通信可能吃掉稀疏计算收益。',
+    caseStudy: '症状：平均吞吐不错但 P99 很差。观察：某些 expert 所在卡利用率异常、All-to-All 耗时拉长。判断：路由负载不均。动作：调整 expert parallel 配置、限制 batch 形态或选择更均衡模型。验证：看 expert 命中分布和跨卡通信耗时。',
+    boundary: 'Dense 模型可预测性更强，MoE 在质量/成本上有吸引力但工程变量更多。NVIDIA 与 Ascend 都会遇到 expert 并行问题，只是通信栈、kernel 和工具链不同。',
+    questions: ['总参数、激活参数和显存常驻之间有什么区别？', '为什么热门 expert 会制造局部瓶颈？', '什么场景下 Dense 反而比 MoE 更适合生产服务？']
+  },
+  T19: {
+    scene: '模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。',
+    ascend: '在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。',
+    derivation: '把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。',
+    caseStudy: '症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。',
+    boundary: '线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。',
+    questions: ['MHA、GQA、MLA 分别如何改变 KV 账？', '为什么混合 attention 成为长上下文主流方向？', '评估新 attention 模型时要先验证哪些 Ascend 后端能力？']
+  },
+  T20: {
+    scene: 'Qwen 混合架构让大部分层不再保存完整 KV，但平台要判断这是否能转化为 910B 上的真实并发收益，而不是只记住“DeltaNet 省 KV”。',
+    ascend: 'Gated DeltaNet 对 Ascend 的挑战在于专用状态更新 kernel、MTP head、量化格式和 vLLM Ascend 支持。若缺少高效后端，理论长上下文收益会变成 fallback 成本。',
+    derivation: '把层分成 DeltaNet 状态层和 Gated Attention 层：前者用固定状态降低随长度增长的 KV，后者保留精确回看。估算并发时，只把 full attention 层纳入传统 KV 增长，同时保留状态矩阵和运行时开销。',
+    caseStudy: '症状：同显存下 Qwen 混合模型并发优于传统 GQA，但某些长文检索任务波动。观察：full attention 层较少，精确回看依赖特定层。判断：结构省资源但任务质量需分桶评估。动作：按任务类型灰度，保留强检索场景评测。验证：看 needle retrieval、工具调用和长对话一致性。',
+    boundary: '不要把 Gated DeltaNet 等同于“无缓存”。它只是把大部分传统 KV 改成固定状态与少数 attention KV；仍需要显存、kernel 和调度支持。',
+    questions: ['Qwen 混合层为什么能降低长上下文 KV 成本？', 'DeltaNet 层和 full attention 层分别承担什么职责？', '为什么结构优势必须通过 Ascend kernel 验证？']
+  },
+  T21: {
+    scene: 'DeepSeek V4 类路线把超长上下文从“完整保存”转向“压缩、索引、稀疏检索”。平台侧要提前判断这种非标准 attention 对 vLLM Ascend 与自研 kernel 的冲击。',
+    ascend: 'CSA/HCA 这类机制可能需要压缩器、索引器、滑动窗口和特殊 attention kernel。Ascend 适配不只是把算子编译通过，还要验证低精度、访存模式和长上下文下的稳定性。',
+    derivation: 'CSA 适合较轻压缩后做稀疏精确检索，HCA 适合重压缩后做低成本全局概览，滑动窗口保留最近 token。估算成本要把压缩、索引、检索和 dense-on-compressed 全部算进去。',
+    caseStudy: '症状：模型宣传 KV 极低，但平台试跑发现 kernel 链复杂、延迟不稳定。观察：索引器和压缩步骤占比高，长上下文收益要到大长度才显现。判断：适合特定长上下文，不一定适合所有在线对话。动作：按上下文长度和任务类型分池。验证：比较短/中/超长请求的成本曲线。',
+    boundary: 'CSA/HCA 代表方向，不代表短期一定适合 910B 生产主力。是否引入取决于开源实现成熟度、CANN kernel 成本、模型质量和业务长上下文需求。',
+    questions: ['CSA 和 HCA 分别解决哪类历史检索问题？', '为什么超长上下文模型可能在短请求上没有优势？', '非标准 attention 给推理框架带来哪些适配成本？']
+  },
+  T04: {
+    scene: '同一个模型要在 910B3 和 910B4 之间做资源池分层：B3 给长上下文和高价值业务，B4 承接中小模型、实验和成本敏感流量。判断依据必须来自容量、带宽、互联和 SLA，而不是型号偏好。',
+    ascend: '公开资料中 910B 系列规格会随整机形态和软件版本呈现差异；工程侧应以内部验收与 CANN 实测为准。可稳定使用的 HBM、实际 kernel 吞吐、HCCS/HCCL 通信和故障域比宣传峰值更重要。',
+    derivation: '硬件匹配顺序是：权重能否放下，KV 在目标上下文和并发下是否够用，prefill/decode 分别受算力还是带宽限制，多卡扩展后通信是否可控。任何一步失败，都要换模型、换精度、换卡型或换部署拓扑。',
+    caseStudy: '症状：模型在 B4 上能启动但压测很快 OOM 或排队。观察：权重占用后剩余 KV 空间不足，长请求触发 block exhaustion。判断：“能启动”不等于“能生产”。动作：迁入 B3、压缩上下文、量化或降低并发。验证：看峰值水位和故障迁移余量。',
+    boundary: 'A100/H100 的 SM/Tensor Core 经验不能直接等价到 Ascend Cube/Vector/Scalar。对比硬件时要看端到端服务指标、软件栈成熟度和业务成本，而不是单一 TFLOPS。',
+    questions: ['为什么 B3/B4 分级首先是显存和 KV 策略问题？', '生产部署为什么必须保留热升级、故障迁移和流量峰值余量？', '硬件宣传峰值和服务可用性能之间通常差在哪些环节？']
+  },
+  T05: {
+    scene: 'vLLM Ascend 能跑通后，端到端 TPOT 仍不达标。专家不会马上重写全框架，而是用 profiling 找出每 token 每层重复出现的 attention、FFN、量化和采样热点。',
+    ascend: 'CANN/Ascend C 优化的关键是 GM、UB、L1/L0、Cube、Vector 和同步之间的流水线。高价值算子通常要重做 tiling、double buffer、fusion 和数据布局，减少 GM 往返。',
+    derivation: '算子 ROI = 热点占比 × 可优化空间 × 调用频率。一个 5% 的单算子提升如果处在每层每 token 主路径，端到端可能可见；一个冷路径 kernel 即便 micro benchmark 翻倍，也可能没有服务收益。',
+    caseStudy: '症状：AI Core 利用率波动、kernel 间空隙多。观察：attention 后处理多次落 GM，Vector 与 Cube 衔接差。判断：数据搬运和 kernel launch 过多。动作：融合后处理、调整 tiling、启用 double buffer。验证：看端到端 TPOT 而不只看单算子耗时。',
+    boundary: '自研算子不是越多越好。上游 vLLM/CANN 已优化的路径应优先复用，只有在生产主路径、模型覆盖面和维护成本都成立时才定制。',
+    questions: ['为什么 GM 到 UB 的搬运次数会决定算子收益？', '如何判断一个自研算子是否值得长期维护？', '单算子 benchmark 和服务 TPOT 为什么可能背离？']
+  },
+  T06: {
+    scene: '同一台推理实例同时服务短问答、长 prompt 和流式代码生成。没有 PagedAttention 和 continuous batching，KV 碎片和长请求阻塞会迅速吃掉吞吐。',
+    ascend: '在 Ascend 后端，PagedAttention 的 block size、KV layout、attention kernel 和调度器需要与 CANN 算子能力对齐。KV 管理策略如果不适配 NPU 内存访问形态，会把理论调度收益变成带宽浪费。',
+    derivation: '把系统拆成 KV 分配、调度选择、执行 kernel 三层。吞吐提升来自减少碎片、提高 batch 稳定性和复用前缀；延迟风险来自长 prefill、抢占和 batch 过大。',
+    caseStudy: '症状：平均吞吐提高但 P99 TTFT 变差。观察：长 prefill 占用调度轮次，decode 请求等待。判断：chunked prefill 或优先级策略不足。动作：启用分块 prefill、限制长请求并发、分层队列。验证：按输入长度切分 TTFT。',
+    boundary: 'vLLM 是资源调度基座，不是所有后端都天然同等高效。CUDA 后端成熟路径迁移到 Ascend 时，要逐项验证 KV、attention、采样和通信。',
+    questions: ['PagedAttention 如何减少 KV 内存浪费？', 'continuous batching 为什么可能同时提升吞吐并影响尾延迟？', 'prefix caching 在企业知识库问答中有什么收益和风险？']
+  },
+  T07: {
+    scene: '开源 vLLM Ascend 可以跑通基础模型，但内部生产需要支持特定模型结构、量化格式、MTP、P/D 分离和异常恢复。适配工作要分清社区能力、GTS 定制和业务网关三层。',
+    ascend: 'Ascend 适配点包括 torch-npu/ACL 调用、CANN kernel、HCCL 通信、KV cache 布局、动态图/静态图差异和 NPU profiling。每个点都可能让同一套 vLLM 调度语义出现不同性能表现。',
+    derivation: '优先级按“decode 主路径频率 × 当前瓶颈占比 × 业务覆盖面”排序。高频 attention/MoE/MTP 路径优先；模型加载、特殊采样或少数模型分支可以后置。',
+    caseStudy: '症状：demo 可用但长稳压测出现尾延迟尖刺。观察：某些 kernel fallback、KV block 回收慢、异常请求拖住队列。判断：适配只过功能未过生产。动作：补 profiling、回归压测和异常恢复测试。验证：看 24h 稳定性、P99 和错误率。',
+    boundary: '不要 fork 成不可升级的孤岛。能通过 vLLM 后端接口、算子插件或清晰扩展点完成的定制，优先保持与上游演进兼容。',
+    questions: ['vLLM 语义层和 Ascend kernel 层的边界在哪里？', '什么样的定制会显著增加上游跟进成本？', '生产验收为什么必须包含长稳与异常路径？']
+  },
+  T08: {
+    scene: '长文档问答把 prefill 队列打满，普通对话用户的 decode 也被拖慢。P/D 分离的目标是让长 prompt 的计算密集阶段和逐 token 的低延迟阶段分开治理。',
+    ascend: '在 910B 节点内做 4P4D，需要关注 KV/状态传输、HCCS/HCCL 带宽、prefill 与 decode 资源池隔离、故障重试和 CANN 后端对 disaggregated prefill 的支持。',
+    derivation: 'P/D 配比由输入长度分布、输出长度分布、并发和 KV 传输成本共同决定。若 MTP 把 decode 加速，系统瓶颈可能重新回到 prefill，需要动态调整 P:D 比例。',
+    caseStudy: '症状：MTP 上线后 ITL 降低，但 TTFT 开始恶化。观察：decode 池空闲增加，prefill 队列积压。判断：原 4P4D 配比不再匹配新瓶颈。动作：提高 prefill 资源、调整长请求路由、限制超长 prompt。验证：同时看 TTFT、ITL 和池间水位。',
+    boundary: 'P/D 分离不是固定架构模板。网络、KV 传输和故障处理成本大于排队收益时，单体调度反而更简单可靠。',
+    questions: ['为什么 prefill 和 decode 混部会互相干扰？', 'MTP 上线后为什么可能需要重新计算 P/D 配比？', 'KV 传输失败时服务应该如何降级？']
+  },
+  T09: {
+    scene: '团队希望把 decode TPOT 从几十毫秒压到更低，但直接加卡收益有限。MTP 通过一次验证多个候选 token，提高每次主模型权重读取的产出。',
+    ascend: '在 Ascend 上实现 MTP 要看候选生成、目标模型验证 kernel、采样和 batch 调度是否能高效融合。若 MTP head 或 draft 路径触发低效 fallback，收益会被吃掉。',
+    derivation: '近似收益由平均接受 token 数决定：接受率越高，主模型每输出 token 的有效 decode 步数越少。但候选长度越长，验证开销、显存和调度复杂度也越高。',
+    caseStudy: '症状：离线 benchmark 提速，线上 ITL 改善不明显。观察：真实采样温度更高、接受率下降、batch 被候选长度拉宽。判断：实验流量与生产流量分布不一致。动作：按业务域训练/选择 MTP、分场景开关。验证：记录接受率、回退率和 ITL。',
+    boundary: 'Speculative decoding 保证分布一致的前提依赖正确验证流程。为了速度跳过拒绝采样或改输出分布，会把性能优化变成质量风险。',
+    questions: ['接受率为什么比候选长度更能决定收益？', '什么业务流量更适合 MTP？', '如何设计 MTP 开关的线上灰度指标？']
+  },
+  T10: {
+    scene: '某模型 FP16 在 B4 上放不下，FP8/INT8 后可以启动，但复杂代码任务质量回退。量化评审必须把可部署、可提速和可接受质量分开验收。',
+    ascend: 'Ascend 上量化收益取决于 CANN kernel、模型格式、校准数据和 vLLM Ascend 支持。只把权重文件变小不代表 AI Core 有高效低精度路径，也不代表采样质量稳定。',
+    derivation: '权重量化降低常驻显存和 decode 读权重带宽；KV 量化降低长上下文并发显存；激活量化影响计算路径。三者收益不同，风险也不同。',
+    caseStudy: '症状：INT4 模型吞吐提升但工具调用错误变多。观察：通用 benchmark 损失小，内部多轮 agent 任务失败率升高。判断：校准集不覆盖真实任务。动作：换 W8A8/FP8、补业务评测、对高价值租户保留高精度版本。验证：看任务成功率而不只看困惑度。',
+    boundary: '低比特不是免费午餐。NVIDIA 上成熟的量化格式不一定在 Ascend 上同样成熟，反之亦然；上线标准应以本平台 kernel 和业务评测为准。',
+    questions: ['权重量化和 KV 量化分别解决什么问题？', '为什么低位量化可能省显存但不提速？', '量化灰度应覆盖哪些业务指标？']
+  },
+  T11: {
+    scene: '容量看板显示 tokens/s 提升，但用户抱怨首字慢。指标体系要能区分排队、prefill、decode、流式返回和错误恢复，而不是只给一个吞吐数字。',
+    ascend: 'Ascend 侧排障要把服务指标与 NPU 指标对齐：AI Core/HBM、kernel timeline、HCCL 通信、KV 水位和调度队列都要能回到同一个 request/model/cluster 标签。',
+    derivation: 'TTFT = 网关排队 + 调度等待 + prefill + 首 token 返回；ITL/TPOT = decode 轮次 + 调度 + 流式发送；吞吐 = 时间窗口内输出 token / 资源。不同指标对应不同优化动作。',
+    caseStudy: '症状：P50 正常但 P99 爆炸。观察：长上下文租户集中、KV 水位高、队列出现抢占。判断：尾部由重载请求引发。动作：按输入长度分级路由、限制超长请求、隔离高优先级流量。验证：P99 按租户和长度下降。',
+    boundary: '平均值适合汇报趋势，不适合定位事故。专家看分布、分桶和相关性，尤其是输入长度、输出长度、模型版本和资源池。',
+    questions: ['TTFT 和 ITL 分别反映哪类瓶颈？', '为什么 P99 比平均值更适合做 SLA？', '容量评审至少需要哪些分桶维度？']
+  },
+  T12: {
+    scene: '同一模型部署在多个集群，某个集群 KV 水位高但 QPS 低，另一个集群 QPS 高但短请求多。智能路由必须理解请求画像和资源状态，而不是轮询。',
+    ascend: '昇腾资源池可能按卡型、CANN 版本、模型适配程度和故障域分层。网关路由要把这些能力差异编码进候选集，避免把不支持的模型或精度打到错误集群。',
+    derivation: '路由可先做硬过滤：权限、模型版本、区域、健康、能力；再做软评分：剩余 KV、队列空间、延迟达标、成本和租户优先级。长上下文请求应提高 KV 权重。',
+    caseStudy: '症状：整体容量足够但部分请求频繁超时。观察：长请求被路由到 KV 水位高的池。判断：路由只看连接数，不看 token 预算。动作：引入输入长度估计和 KV 水位评分。验证：长请求 TTFT 与失败率下降。',
+    boundary: '跨集群隔离下 one-shot routing 的代价很高，盲目重试会制造流量放大。失败策略必须有预算、幂等和流式响应边界。',
+    questions: ['为什么最少连接不等于最优推理路由？', '路由评分中哪些指标应作为硬过滤？', '流式请求失败后为什么不能总是透明重试？']
+  },
+  T13: {
+    scene: '一个租户突然发起长上下文压测，入口 QPS 不高但 KV 很快耗尽。只按请求数限流无法保护推理平台，必须按 token、上下文和并发治理。',
+    ascend: 'Ascend 资源池的治理动作要落到模型实例和 KV 水位：限制 max_tokens、max_model_len、并发、优先级队列和降级模型，比单纯网关 QPS 更贴近 NPU 瓶颈。',
+    derivation: '如果瓶颈是 KV，治理变量是上下文长度和并发；如果瓶颈是 decode 带宽，治理变量是输出 token 和 batch；如果瓶颈是错误率，治理变量是熔断和退避。',
+    caseStudy: '症状：低优先级压测导致生产 ITL 变差。观察：压测请求输出长、占用 decode 多轮。判断：共享队列缺少优先级和输出预算。动作：WFQ、租户配额、压测标记、低优先级降级。验证：生产 P99 恢复且低优先级可控排队。',
+    boundary: '治理不是越严越好。过度拒绝会浪费空闲资源，过度弹性会伤害 SLA。策略应支持保底、弹性和故障时收缩。',
+    questions: ['为什么 QPS 限流不足以保护 LLM 推理？', '降级链路应该优先降哪些参数？', '如何避免大租户饿死小租户？']
+  },
+  T14: {
+    scene: '一次慢请求跨过网关、调度器、vLLM、CANN kernel 和流式返回。没有统一 trace 和领域指标，团队只能在多套系统里猜。',
+    ascend: 'NPU profiling、CANN kernel timeline、HCCL 通信和应用日志需要通过 request_id、model_id、cluster_id 关联。否则硬件侧看到慢 kernel，服务侧不知道影响哪个租户。',
+    derivation: '排障分段：入口耗时、策略耗时、队列等待、prefill、decode、传输、客户端断开。每段至少记录耗时、错误、资源池、模型版本和请求长度。',
+    caseStudy: '症状：某模型 P99 TTFT 突然升高。观察：网关无异常，prefill 池队列升高，NPU HBM 水位正常。判断：长 prompt 流量突增而非硬件故障。动作：按长度路由和限流。验证：TTFT 分桶恢复。',
+    boundary: '大屏不是可观测性。没有可操作标签、采样策略和保留策略，数据越多排障越慢。专家关注从告警到动作的闭环。',
+    questions: ['一次请求至少需要哪些 trace 标签？', '为什么 NPU 利用率高不能直接说明系统健康？', 'ClickHouse 聚合指标和原始日志各适合解决什么问题？']
+  },
+  T15: {
+    scene: '多个 PDU 共享千卡资源：生产希望稳定，研发希望弹性，压测希望冲高。多租户治理要把贡献、保底、弹性、计量和隔离变成规则。',
+    ascend: '在昇腾资源池中，租户策略要落到具体卡型、模型、上下文长度、KV 配额和优先级队列。不同 CANN/模型适配版本也可能成为租户可用性的边界。',
+    derivation: '可用容量先扣除系统预留和生产保底，再进入弹性池。计量不只算请求数，还要算输入 token、输出 token、占用时长、卡型权重和长上下文系数。',
+    caseStudy: '症状：某大租户消耗大量长上下文，其他租户 TTFT 变差。观察：QPS 配额未超，但 token 和 KV 占用超预期。判断：计量维度错误。动作：引入 token/KV 预算与权重公平队列。验证：租户间 P95 差距收敛。',
+    boundary: '公平不是平均。高优先级生产租户需要保底，低优先级研发应使用弹性容量；计费和策略要透明，否则平台信任会下降。',
+    questions: ['为什么多租户要按 token 与上下文计量？', '保底配额和弹性池如何共存？', '哪些隔离策略能防止压测误伤生产？']
+  },
+  T16: {
+    scene: '新模型到来时，团队需要回答：能否在 910B 上跑、支持什么精度、质量是否达标、如何灰度、失败怎么回滚。生命周期管理把这些问题前置。',
+    ascend: '模型注册信息应记录 Ascend 兼容性：CANN 版本、torch-npu/vLLM Ascend 版本、支持精度、最大上下文、已验证卡型、已知 fallback 和推荐部署参数。',
+    derivation: '上线门禁 = 质量基线 + 安全策略 + 性能压测 + 成本测算 + 回滚路径。灰度期间比较新旧版本的 TTFT、ITL、错误率、输出质量和资源成本。',
+    caseStudy: '症状：灰度模型质量好但线上错误率高。观察：少数长上下文请求触发 tokenizer/config 边界问题。判断：离线评测覆盖不足。动作：补长上下文与工具调用回归、缩小灰度、保留旧版本路由。验证：错误率和回滚时间。',
+    boundary: '模型发布不是替换权重文件。权重、tokenizer、prompt 模板、量化配置、runtime 镜像和路由策略必须作为一个发布单元。',
+    questions: ['模型注册表应记录哪些 Ascend 特有信息？', '灰度指标为什么要同时看质量和性能？', '没有回滚演练会带来什么风险？']
+  },
+  T17: {
+    scene: '业务只看到一个 OpenAI-compatible API，但平台内部要完成鉴权、计量、路由、调度、推理、观测、降级和模型生命周期。全景图用于统一团队语言。',
+    ascend: 'GTS 的 MaaS 架构需要把 Ascend 硬件池、CANN/vLLM Ascend、自研算子、模型评测和网关治理接成稳定控制面与数据面。硬件能力只有进入平台闭环才产生业务价值。',
+    derivation: '请求链路从 API 进入，经过策略检查和路由，进入资源池和 runtime，流式返回 token，同时旁路写入日志、指标和计量。控制链路负责模型注册、配置下发、灰度和回滚。',
+    caseStudy: '症状：单模型实例运行正常，但平台高峰期体验不稳。观察：网关路由、租户配额、模型版本和观测数据割裂。判断：缺少平台级闭环。动作：统一资源模型和请求追踪。验证：事故定位时间和容量利用率改善。',
+    boundary: 'MaaS 不等于 API wrapper。真正难点在多模型、多租户、多集群和多硬件代际下保持 SLA、成本和安全可控。',
+    questions: ['MaaS 数据面和控制面分别包含哪些职责？', '为什么单机推理成功不代表平台可运营？', '哪些模块最能体现内部 AI Infra 团队的不可替代性？']
+  },
+  T18: {
+    scene: '当外部 API 越来越可用，内部平台要证明价值：不是只比裸推理速度，而是提供安全合规、资源治理、成本控制、模型适配和私有场景优化。',
+    ascend: '硬件代际策略要看 Ascend 路线、CANN 成熟度、模型结构趋势和团队自研 kernel 能力。新卡如果软件栈不成熟，短期生产价值可能不如稳定老卡。',
+    derivation: '竞争力 = 硬件可得性 × 软件适配速度 × 业务场景深度 × 运营治理能力。任何一项为零，平台价值都会被外部 API 或其他内部方案削弱。',
+    caseStudy: '症状：有人质疑“外部 API 已经可用，为什么还要自建”。观察：外部 API 无法满足数据域、审计、私有模型、成本和跨 PDU 治理。判断：竞争力应从推理速度叙事升级为企业 AI Infra。动作：展示全栈治理能力和域内优化。验证：看合规覆盖、成本和业务接入速度。',
+    boundary: '硬件升级不是线性替换。代际选择必须考虑模型趋势、供应、软件生态、迁移成本和团队学习曲线。',
+    questions: ['内部 MaaS 平台相对外部 API 的核心价值是什么？', '为什么硬件代际策略必须跟模型结构趋势一起判断？', '如何避免把平台竞争力叙事局限在单卡性能？']
+  }
+};
+
 const sourceRows = [
   ['T01', 'Roofline 与 memory-bound 判断', 'Williams et al., Roofline model paper: https://crd.lbl.gov/assets/pubs_presos/roofline_2009.pdf; NVIDIA Memory Limited Layers guide: https://docs.nvidia.com/deeplearning/performance/dl-performance-memory-limited/index.html'],
   ['T02', 'KV Cache、MQA/GQA、长上下文显存', 'GQA paper: https://arxiv.org/abs/2305.13245; Multi-Query Attention paper: https://arxiv.org/abs/1911.02150'],
@@ -265,6 +436,13 @@ const sourceRows = [
 ];
 
 function topicBody(topic, content) {
+  const addon = expertAddons[topic.id];
+  if (!addon) {
+    throw new Error(`Missing expert addon for ${topic.id}`);
+  }
+  const derivationSteps = content.steps.map((step, index) => `${index + 1}. ${step}`).join('\n');
+  const selfCheck = addon.questions.map((question) => `- ${question}`).join('\n');
+
   return [
     '## 一句话抓手',
     '',
@@ -272,13 +450,27 @@ function topicBody(topic, content) {
     '',
     `![${topic.name} 图解](learning-asset://topic-diagrams/${content.slug})`,
     '',
-    '## 先建立直觉',
+    '## 问题场景',
+    '',
+    addon.scene,
+    '',
+    '## 第一性原理',
     '',
     content.intuition,
     '',
     '## 机制拆解',
     '',
     content.mechanism,
+    '',
+    '## 昇腾落地点',
+    '',
+    `> [!ASCEND]\n> ${addon.ascend}`,
+    '',
+    '## 推导示例',
+    '',
+    addon.derivation,
+    '',
+    derivationSteps,
     '',
     '## 公式/判断',
     '',
@@ -288,9 +480,21 @@ function topicBody(topic, content) {
     '',
     content.scenario,
     '',
+    '## 工程案例',
+    '',
+    addon.caseStudy,
+    '',
+    '## 对比与边界',
+    '',
+    addon.boundary,
+    '',
     '## 常见误区',
     '',
     content.mistake,
+    '',
+    '## 专家自检',
+    '',
+    selfCheck,
     '',
     '## 小结',
     '',
@@ -371,8 +575,10 @@ function diagramShell(topic, content, body, footnote) {
   ${text(48, 70, topic.id, { color: '#5eead4', size: 18, weight: 900 })}
   ${text(98, 70, topic.name, { color: '#f8fafc', size: 22, weight: 900 })}
   ${text(48, 104, content.catch, { color: '#cbd5e1', size: 15, weight: 600 })}
+  ${rect(742, 42, 166, 30, { fill: '#102033', stroke: '#5eead4', radius: 999 })}
+  ${text(825, 63, '专家读图：问题→机制→决策', { anchor: 'middle', color: '#5eead4', size: 12, weight: 900 })}
   ${body}
-  ${text(48, 372, footnote, { color: '#94a3b8', size: 13 })}
+  ${text(48, 372, footnote.replace(/^读图：/, '专家读图：'), { color: '#94a3b8', size: 13 })}
 </svg>
 `;
 }
@@ -461,9 +667,9 @@ function makeDiagram(topic, content) {
       ${text(544, 354, 'Sliding Window：最近 token 保持局部细节，不被过度压缩', { anchor: 'middle', color: '#fecaca', weight: 800 })}
     `, '读图：DeepSeek V4 用压缩、索引和滑动窗口组合治理超长上下文。'),
     T04: () => diagramShell(topic, content, `
-      ${box(78, 146, 230, 158, '910B3 资源池', '大模型 / 长上下文 / 高并发', { stroke: '#5eead4' })}
+      ${box(78, 146, 230, 158, '910B3 资源池', '64GB HBM / 长上下文 / 高并发', { stroke: '#5eead4' })}
       ${rect(104, 224, 44, 58, { fill: '#172554', stroke: '#60a5fa' })}${rect(160, 188, 44, 94, { fill: '#064e3b', stroke: '#34d399' })}${rect(216, 246, 44, 36, { fill: '#422006', stroke: '#facc15' })}
-      ${box(374, 146, 230, 158, '910B4 资源池', '中小模型 / 成本优先 / 实验', { stroke: '#60a5fa' })}
+      ${box(374, 146, 230, 158, '910B4 资源池', '32GB HBM / 中小模型 / 成本优先', { stroke: '#60a5fa' })}
       ${rect(400, 242, 44, 40, { fill: '#172554', stroke: '#60a5fa' })}${rect(456, 214, 44, 68, { fill: '#064e3b', stroke: '#34d399' })}${rect(512, 254, 44, 28, { fill: '#422006', stroke: '#facc15' })}
       ${box(684, 162, 190, 52, '权重能否放下', '', { stroke: '#facc15' })}
       ${box(684, 232, 190, 52, 'KV 是否够用', '', { stroke: '#34d399' })}
@@ -630,8 +836,25 @@ for (const topic of seed.topics) {
     throw new Error(`Missing expanded content for ${topic.id}`);
   }
   topic.body_md = topicBody(topic, content);
+  if (topic.id === 'T04') {
+    topic.key_points = [
+      '硬件分级先看 HBM 容量、KV Cache 余量、HBM 带宽、互联和软件栈成熟度，而不是单一峰值算力',
+      '910B3 资源池更适合大模型、长上下文、高并发和生产主力流量；容量余量决定能否承受峰值与故障迁移',
+      '910B4 资源池更适合中小模型、实验流量、成本敏感服务或经过量化/短上下文约束的模型',
+      '达芬奇 AI Core 可按 Cube、Vector、Scalar 与存储层级理解，优化重点是让数据搬运和矩阵计算流水线对齐',
+      '与 NVIDIA 对比时应看端到端 TTFT/ITL/吞吐、kernel 成熟度和运维成本，不能只比较宣传 TFLOPS',
+      '生产策略必须区分“能启动”“能压测通过”和“能在 SLA 下长期服务”'
+    ];
+  }
   fs.writeFileSync(path.join(DIAGRAM_DIR, content.slug), makeDiagram(topic, content), 'utf8');
 }
+
+seed.metadata = {
+  ...seed.metadata,
+  target_audience: 'GTS AI Infra 专家进阶读者（熟悉 LLM 基础，关注昇腾/CANN/vLLM 落地）',
+  content_quality_profile: '每篇 Topic 包含问题场景、第一性原理、昇腾落点、推导示例、工程案例、边界、误区和专家自检',
+  last_content_upgrade: 'expert-ascend-ai-infra-v2'
+};
 
 fs.writeFileSync(SEED_PATH, `${JSON.stringify(seed, null, 2)}\n`, 'utf8');
 fs.writeFileSync(SOURCES_PATH, makeSources(seed), 'utf8');

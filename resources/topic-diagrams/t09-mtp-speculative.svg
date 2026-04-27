@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T09</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MTP投机推理</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MTP 的直觉是：既然 Decode 每步搬权重很贵，那就尝试一次多猜几个 token，再由主模型验收。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="80" y="154" width="170" height="66" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
 <text x="165" y="183" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">MTP / Draft</text>
@@ -39,5 +41,5 @@
 <text x="238" y="279" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">5</text>
       <text x="82" y="318" text-anchor="start" fill="#cbd5e1" font-size="14" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">收益取决于平均接受 token 数，而不是“开了投机”四个字。</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：投机推理用候选 token 换更少主模型 decode 步数。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：投机推理用候选 token 换更少主模型 decode 步数。</text>
 </svg>

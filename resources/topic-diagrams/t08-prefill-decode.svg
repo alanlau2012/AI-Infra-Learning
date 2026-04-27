@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T08</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Prefill/Decode分离与4P4D架构</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">P/D 分离的核心，是让“读长 prompt”和“逐 token 生成”不要在同一条队列里互相拖累。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="72" y="148" width="250" height="120" rx="8" fill="#101b2d" stroke="#5eead4" opacity="1"/>
 <text x="197" y="204" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">Prefill Pool</text>
@@ -30,5 +32,5 @@
 <text x="480" y="304" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">4P4D 是配比问题</text>
 <text x="480" y="326" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">由流量画像决定</text>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：P/D 分离把 prefill 和 decode 两种瓶颈拆开治理。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：P/D 分离把 prefill 和 decode 两种瓶颈拆开治理。</text>
 </svg>

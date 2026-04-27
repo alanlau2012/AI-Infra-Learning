@@ -49,28 +49,28 @@ export default function TopicDetailView({ topic, onUpdateStatus }: Props) {
         </span>
       </div>
 
+      <section className="topic-summary-grid" aria-label="专题摘要">
+        <div className="summary-card">
+          <h4>为什么重要</h4>
+          <p>{topic.why ?? '该专题正在补充摘要。'}</p>
+        </div>
+        <div className="summary-card">
+          <h4>关键知识点</h4>
+          <ol className="key-points">
+            {topic.keyPoints.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ol>
+        </div>
+        <div className="summary-card">
+          <h4>实战关联</h4>
+          <p>{topic.realWorldConnection ?? '该专题正在补充实战关联。'}</p>
+        </div>
+      </section>
+
       <section className="detail-section detail-body-section">
         <h4>详细内容</h4>
         {topic.bodyMd ? <MarkdownContent markdown={topic.bodyMd} /> : <p>正文内容待补充。</p>}
-      </section>
-
-      <section className="detail-section">
-        <h4>为什么重要</h4>
-        <p>{topic.why}</p>
-      </section>
-
-      <section className="detail-section">
-        <h4>关键知识点</h4>
-        <ol className="key-points">
-          {topic.keyPoints.map((point) => (
-            <li key={point}>{point}</li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="detail-section">
-        <h4>实战关联</h4>
-        <p>{topic.realWorldConnection}</p>
       </section>
 
       <div className="status-actions" aria-label="学习状态">

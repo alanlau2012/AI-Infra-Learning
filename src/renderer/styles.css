@@ -340,14 +340,44 @@ button {
   color: #facc15;
 }
 
+.topic-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px;
+  margin: 0 0 30px;
+}
+
+.summary-card {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #263143;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.96));
+}
+
+.summary-card h4 {
+  margin: 0 0 10px;
+  color: #5eead4;
+  font-size: 14px;
+}
+
+.summary-card p {
+  margin: 0;
+  color: #d1d9e6;
+  line-height: 1.7;
+}
+
+.summary-card .key-points {
+  font-size: 13px;
+}
+
 .detail-section {
   padding: 22px 0;
   border-top: 1px solid #263143;
 }
 
 .detail-body-section {
-  padding-top: 0;
-  border-top: 0;
+  padding-top: 26px;
 }
 
 .detail-section h4 {
@@ -462,8 +492,8 @@ button {
 /* Markdown body */
 .markdown-body {
   color: #d1d9e6;
-  line-height: 1.7;
-  font-size: 14px;
+  line-height: 1.78;
+  font-size: 15px;
 }
 
 .markdown-body h1,
@@ -495,11 +525,35 @@ button {
 }
 
 .markdown-body blockquote {
-  margin: 10px 0;
-  padding: 4px 14px;
+  margin: 14px 0;
+  padding: 8px 16px;
   border-left: 3px solid #5eead4;
   color: #a8b6c8;
   background: rgba(94, 234, 212, 0.05);
+}
+
+.markdown-body blockquote.callout {
+  border: 1px solid #1d4ed8;
+  border-left: 4px solid #38bdf8;
+  border-radius: 8px;
+  background: rgba(14, 116, 144, 0.14);
+  color: #dbeafe;
+}
+
+.markdown-body blockquote.callout strong {
+  display: inline-block;
+  margin-right: 8px;
+  color: #5eead4;
+}
+
+.markdown-body blockquote.callout-warning {
+  border-color: #854d0e;
+  border-left-color: #facc15;
+  background: rgba(113, 63, 18, 0.18);
+}
+
+.markdown-body blockquote.callout-warning strong {
+  color: #fde68a;
 }
 
 .markdown-body code {

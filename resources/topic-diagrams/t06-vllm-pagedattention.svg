@@ -15,6 +15,8 @@
   <text x="48" y="70" text-anchor="start" fill="#5eead4" font-size="18" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">T06</text>
   <text x="98" y="70" text-anchor="start" fill="#f8fafc" font-size="22" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM核心机制</text>
   <text x="48" y="104" text-anchor="start" fill="#cbd5e1" font-size="15" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">vLLM 的关键不是“更快地算一个请求”，而是“更聪明地把很多请求塞进同一台推理机器”。</text>
+  <rect x="742" y="42" width="166" height="30" rx="999" fill="#102033" stroke="#5eead4" opacity="1"/>
+  <text x="825" y="63" text-anchor="middle" fill="#5eead4" font-size="12" font-weight="900" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：问题→机制→决策</text>
   
       <rect x="58" y="150" width="150" height="74" rx="8" fill="#101b2d" stroke="#60a5fa" opacity="1"/>
 <text x="133" y="183" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="800" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">请求队列</text>
@@ -32,5 +34,5 @@
 <text x="665" y="346" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">逻辑页 → 物理页</text>
       <path d="M 660 290 L 660 306" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
     
-  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">读图：vLLM 像 KV Cache 的操作系统，用分页和连续调度减少浪费。</text>
+  <text x="48" y="372" text-anchor="start" fill="#94a3b8" font-size="13" font-weight="500" font-family="Inter, Microsoft YaHei, Segoe UI, sans-serif">专家读图：vLLM 像 KV Cache 的操作系统，用分页和连续调度减少浪费。</text>
 </svg>

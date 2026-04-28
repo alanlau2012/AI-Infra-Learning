@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-04-28",
+  "comment": "已确认存在于官方渠道（HuggingFace 模型卡、官方 paper、官方 GitHub）的 LLM 型号白名单。verify-sources.mjs 会扫描 seed 中的模型名引用，不在本表里的会作为可疑项报警，要么是新发布、要么是模型幻觉。新增条目时请附 publisher 和 official_url。",
+  "models": [
+    {
+      "name": "Qwen3-0.6B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-0.6B"
+    },
+    {
+      "name": "Qwen3-1.7B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-1.7B"
+    },
+    {
+      "name": "Qwen3-4B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-4B"
+    },
+    {
+      "name": "Qwen3-8B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-8B"
+    },
+    {
+      "name": "Qwen3-14B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-14B"
+    },
+    {
+      "name": "Qwen3-32B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-32B"
+    },
+    {
+      "name": "Qwen3-30B-A3B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-30B-A3B"
+    },
+    {
+      "name": "Qwen3-235B-A22B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-235B-A22B"
+    },
+    {
+      "name": "Qwen3-Next-80B-A3B",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct"
+    },
+    {
+      "name": "Qwen3-Next-80B-A3B-Instruct",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct"
+    },
+    {
+      "name": "Qwen3-Next-80B-A3B-Thinking",
+      "publisher": "Qwen Team",
+      "official_url": "https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking"
+    },
+    {
+      "name": "DeepSeek-V3",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V3"
+    },
+    {
+      "name": "DeepSeek-V3.2-Exp",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2-Exp"
+    },
+    {
+      "name": "Mixtral-8x7B",
+      "publisher": "Mistral AI",
+      "official_url": "https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1"
+    }
+  ],
+  "notes": [
+    "Qwen3.5-* / Qwen3.6-* 截至 2026-04-28 在 HuggingFace 上未找到对应官方模型卡 URL。Qwen3.5 的 model_type 为 qwen3_5（继承 Qwen3-Next 架构），但 Qwen/Qwen3.5-* 仓库未公开发布。",
+    "DeepSeek-V4-* 系列（含 V4-Pro / V4-Flash）截至本次校验未在官方频道公开发布，相关具体规格（CSA 4x、HCA 128x、KV 2% 等）应作为示例假设处理。"
+  ]
+}

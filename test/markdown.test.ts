@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from '../src/renderer/lib/markdown';
+import { extractMarkdownHeadings, renderMarkdown } from '../src/renderer/lib/markdown';
 
 describe('renderMarkdown — XSS sanitization', () => {
   it('escapes raw <script> tags so they never become real script elements', () => {
@@ -97,10 +97,19 @@ describe('renderMarkdown — content rendering', () => {
 
     const html = renderMarkdown(md);
     expect(html).toMatch(/<h1[^>]*>H1<\/h1>/);
-    expect(html).toMatch(/<h2[^>]*>H2<\/h2>/);
+    expect(html).toMatch(/<h2 id="section-2-h2">H2<\/h2>/);
     expect(html).toMatch(/<ul>[\s\S]*<li>item 1<\/li>/);
     expect(html).toMatch(/<blockquote>[\s\S]*quoted/);
     expect(html).toMatch(/<table>[\s\S]*<th>a<\/th>/);
+  });
+
+  it('extracts matching markdown headings for the reading table of contents', () => {
+    const headings = extractMarkdownHeadings('## 核心判断\n\n### 推导步骤\n\n#### 不进入目录');
+
+    expect(headings).toEqual([
+      { id: 'section-1-核心判断', level: 2, title: '核心判断' },
+      { id: 'section-2-推导步骤', level: 3, title: '推导步骤' }
+    ]);
   });
 
   it('highlights ```python``` code blocks via highlight.js', () => {
@@ -132,5 +141,23 @@ describe('renderMarkdown — content rendering', () => {
     expect(callout).not.toBeNull();
     expect(callout?.textContent).toContain('昇腾落点');
     expect(callout?.textContent).toContain('关注 HBM 水位和 CANN kernel。');
+  });
+
+  it('renders FACT / ASSUMPTION / INTERNAL callouts with localized labels', () => {
+    const cases = [
+      { type: 'FACT', cls: 'callout-fact', label: '官方来源', body: '来自 Hugging Face 模型卡。' },
+      { type: 'ASSUMPTION', cls: 'callout-assumption', label: '示例假设', body: '示例数字，非现网指标。' },
+      { type: 'INTERNAL', cls: 'callout-internal', label: 'GTS 内部', body: '内部压测观察值。' }
+    ];
+
+    for (const { type, cls, label, body } of cases) {
+      const html = renderMarkdown(`> [!${type}]\n> ${body}`);
+      const dom = new DOMParser().parseFromString(html, 'text/html');
+      const callout = dom.querySelector(`blockquote.${cls}`);
+
+      expect(callout, type).not.toBeNull();
+      expect(callout?.textContent, type).toContain(label);
+      expect(callout?.textContent, type).toContain(body);
+    }
   });
 });

@@ -8,6 +8,7 @@ import type {
   StageWithTopics,
   StudyStatus,
   TopicDetail,
+  TopicSource,
   TopicSummary
 } from '../shared/types';
 import { VALID_STATUSES } from './security';
@@ -99,8 +100,19 @@ function getTopic(seedData: SeedData, topicStatus: Record<string, StudyStatus>, 
       }
       return toTopicSummary(prerequisite, topicStatus);
     }),
-    bodyMd: getTopicBody(topic)
+    bodyMd: getTopicBody(topic),
+    sources: cloneSources(topic.sources)
   };
+}
+
+function cloneSources(sources: TopicSource[] | undefined): TopicSource[] {
+  if (!sources || sources.length === 0) {
+    return [];
+  }
+  return sources.map((source) => ({
+    ...source,
+    covers: [...source.covers]
+  }));
 }
 
 function getRoadmapGraph(seedData: SeedData): RoadmapGraph {

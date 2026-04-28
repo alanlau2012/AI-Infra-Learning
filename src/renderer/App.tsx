@@ -8,7 +8,6 @@ import type {
   TopicDetail
 } from '../shared/types';
 import RoadmapView from './components/roadmap/RoadmapView';
-import ProgressOverview from './components/ProgressOverview';
 import Sidebar from './components/Sidebar';
 import TopicDetailView from './components/TopicDetailView';
 import ViewTabs, { type LearningView } from './components/ViewTabs';
@@ -22,6 +21,7 @@ export default function App() {
   const [view, setView] = useState<LearningView>('list');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
   const latestSelectId = useRef(0);
 
   useEffect(() => {
@@ -67,6 +67,7 @@ export default function App() {
   async function selectTopic(topicId: string) {
     const requestId = ++latestSelectId.current;
     setSelectedTopicId(topicId);
+    setContentError(null);
     try {
       const nextTopic = await window.learning.getTopic(topicId);
       if (latestSelectId.current === requestId) {
@@ -74,7 +75,7 @@ export default function App() {
       }
     } catch (nextError) {
       if (latestSelectId.current === requestId) {
-        setError(nextError instanceof Error ? nextError.message : '加载专题失败');
+        setContentError(nextError instanceof Error ? nextError.message : '加载专题失败');
       }
     }
   }
@@ -89,6 +90,7 @@ export default function App() {
       return;
     }
 
+    setContentError(null);
     try {
       const nextTopic = await window.learning.updateTopicStatus(topic.id, status);
       const [nextOutline, nextProgress] = await Promise.all([
@@ -99,7 +101,7 @@ export default function App() {
       setOutline(nextOutline);
       setProgress(nextProgress);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : '更新状态失败');
+      setContentError(nextError instanceof Error ? nextError.message : '更新状态失败');
     }
   }
 
@@ -121,6 +123,8 @@ export default function App() {
     );
   }
 
+  const selectedStage = topic ? outline.find((stage) => stage.id === topic.stageId) ?? null : null;
+
   return (
     <main className="app-shell">
       <Sidebar
@@ -133,26 +137,54 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-main">
             <div>
-              <span className="eyebrow">Phase 1 MVP</span>
-              <h2>知识点学习</h2>
+              <span className="eyebrow">Knowledge Workspace</span>
+              <h2>{view === 'roadmap' ? '学习路线图' : topic?.name ?? '知识点学习'}</h2>
             </div>
             <ViewTabs view={view} onChange={setView} />
           </div>
-          {progress ? <ProgressOverview progress={progress} /> : null}
+          {progress ? <CompactProgress progress={progress} /> : null}
         </header>
 
-        {view === 'roadmap' && roadmap ? (
+        {contentError ? (
+          <section className="inline-error" role="alert">
+            <strong>操作失败</strong>
+            <span>{contentError}</span>
+          </section>
+        ) : view === 'roadmap' && roadmap ? (
           <RoadmapView
             outline={outline}
             graph={roadmap}
             onSelectTopic={(id) => void selectFromRoadmap(id)}
           />
         ) : topic ? (
-          <TopicDetailView topic={topic} onUpdateStatus={(status) => void updateStatus(status)} />
+          <TopicDetailView
+            topic={topic}
+            stage={selectedStage}
+            onSelectTopic={(id) => void selectTopic(id)}
+            onUpdateStatus={(status) => void updateStatus(status)}
+          />
         ) : (
           <div className="empty-state">暂无可学习专题</div>
         )}
       </section>
     </main>
+  );
+}
+
+function CompactProgress({ progress }: { progress: ProgressSummary }) {
+  const completedPercent =
+    progress.totalTopics === 0 ? 0 : Math.round((progress.completedTopics / progress.totalTopics) * 100);
+
+  return (
+    <section className="compact-progress" aria-label="学习进度概览">
+      <strong>{completedPercent}%</strong>
+      <div className="compact-progress-track" aria-hidden="true">
+        <span style={{ width: `${completedPercent}%` }} />
+      </div>
+      <span>
+        {progress.completedTopics}/{progress.totalTopics} 已完成 · {progress.inProgressTopics} 学习中
+      </span>
+      <progress aria-label="总学习进度" max={100} value={completedPercent} />
+    </section>
   );
 }

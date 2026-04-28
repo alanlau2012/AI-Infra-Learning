@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from '../src/main/security';
+import {
+  getContentSecurityPolicy,
+  getSecureWebPreferences,
+  isExternalLinkSafeToOpen,
+  isValidStudyStatus
+} from '../src/main/security';
 
 describe('Electron security defaults', () => {
   it('uses strict browser webPreferences for renderer isolation', () => {
@@ -43,5 +48,18 @@ describe('Electron security defaults', () => {
     expect(isValidStudyStatus('in_progress')).toBe(true);
     expect(isValidStudyStatus('completed')).toBe(true);
     expect(isValidStudyStatus('done')).toBe(false);
+  });
+
+  it('only allows http(s) URLs to be forwarded to the system browser', () => {
+    expect(isExternalLinkSafeToOpen('https://huggingface.co/Qwen/Qwen3-30B-A3B')).toBe(true);
+    expect(isExternalLinkSafeToOpen('http://example.com/path')).toBe(true);
+
+    expect(isExternalLinkSafeToOpen('file:///C:/Windows/notepad.exe')).toBe(false);
+    expect(isExternalLinkSafeToOpen('javascript:alert(1)')).toBe(false);
+    expect(isExternalLinkSafeToOpen('data:text/html,<h1>x</h1>')).toBe(false);
+    expect(isExternalLinkSafeToOpen('learning-asset://topic-diagrams/x.svg')).toBe(false);
+    expect(isExternalLinkSafeToOpen('mailto:x@y.z')).toBe(false);
+    expect(isExternalLinkSafeToOpen('')).toBe(false);
+    expect(isExternalLinkSafeToOpen('not a url at all')).toBe(false);
   });
 });

@@ -1,11 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from 'electron';
 import type { SeedData, StudyStatus } from '../shared/types';
 import { createLearningStore, type LearningStore } from './learningStore';
 import { getProgressPath, getSeedDataPath, getTopicDiagramPath } from './paths';
-import { getContentSecurityPolicy, getSecureWebPreferences, isValidStudyStatus } from './security';
+import {
+  getContentSecurityPolicy,
+  getSecureWebPreferences,
+  isExternalLinkSafeToOpen,
+  isValidStudyStatus
+} from './security';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -100,8 +105,13 @@ function createWindow() {
 
   const w = mainWindow;
 
-  // 拒绝所有新窗口请求（Electron 安全清单）
-  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // 拒绝所有新窗口请求；但若是 http(s) 外链（如 Topic 参考资料），转交系统浏览器打开。
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalLinkSafeToOpen(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
   // 阻止渲染层跳转到应用自身 URL 以外的地址
   w.webContents.on('will-navigate', (event, navigationUrl) => {
     const devUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL;

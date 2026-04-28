@@ -112,24 +112,92 @@
     {
       "id": "T20",
       "stage_id": "S1",
-      "name": "Gated DeltaNet混合架构：Qwen3.5/3.6的做法",
+      "name": "Gated DeltaNet 混合架构：Qwen3-Next-80B-A3B 的实现",
       "sort_order": 5,
       "difficulty": 3,
       "study_time_minutes": 40,
       "prerequisites": [
         "T19"
       ],
-      "why": "Qwen是GTS绿区核心候选模型家族，理解其推理特性才能做正确的部署决策",
+      "why": "Qwen3-Next 是 GTS 绿区候选模型家族的代表；理解其混合 attention + 高稀疏 MoE 的真实结构，才能做正确的部署、量化和容量决策",
       "key_points": [
-        "DeltaNet原理：维护固定大小的记忆矩阵，每个新token通过delta规则更新矩阵，不存储完整KV Cache",
-        "Gated DeltaNet：加入Mamba风格门控机制，学习何时更新/保留记忆，类似LSTM的遗忘/记忆能力",
-        "3:1混合比例：Qwen3.6-27B的64层 = 16个块 × (3层Gated DeltaNet + 1层Gated Attention)",
-        "头数配置：DeltaNet层48个V头/16个QK头，Gated Attention层24个Q头/仅4个KV头，显著压缩传统KV Cache",
-        "DeltaNet层不产生传统KV Cache（固定状态矩阵），只有部分full attention层产生传统KV Cache",
-        "Qwen3.6模型侧具备MTP相关设计信号；能否在vLLM Ascend中高效用于speculative decoding，需要按版本、量化格式和kernel支持验证"
+        "DeltaNet 原理：维护固定大小的状态矩阵 S ∈ R^{d_k × d_v}，每个新 token 用 delta 规则做局部修订，不存逐 token KV Cache",
+        "Gated DeltaNet：在 DeltaNet 上加门控，学习何时更新/保留状态（类似 Mamba2 / LSTM 的遗忘 + 记忆机制）",
+        "Qwen3-Next-80B-A3B 混合层布局：48 层 = 12 ×（3 层 Gated DeltaNet → MoE + 1 层 Gated Attention → MoE），即 ~75% 线性注意力 / ~25% 全注意力",
+        "头数配置：Gated Attention 层 16 Q heads / 2 KV heads / head dim 256；Gated DeltaNet 层 32 V heads / 16 QK heads / head dim 128",
+        "只有 ~25% 的 Gated Attention 层产生传统 KV Cache；其余 75% 的 DeltaNet 层维护的是固定大小状态——长上下文下 KV 不再随长度线性放大",
+        "MTP 已在 Qwen3-Next 模型侧落地；能否在 vLLM / vllm-ascend 高效用于 speculative decoding，取决于版本、量化格式和 kernel 适配，需按内部基线验证"
       ],
-      "real_world_connection": "Qwen3.6-27B(dense)若采用FP8等低精度，权重量级约27GB，910B3单卡具备放置窗口；生产可行性仍需按上下文、KV/状态、runtime buffer、Ascend后端和吞吐SLA实测确认",
-      "body_md": "## 一句话抓手\n\n> Qwen3.5/3.6 的混合思路是：多数层用便宜的状态记忆，少数层保留精确回看能力。\n\n![Gated DeltaNet混合架构：Qwen3.5/3.6的做法 图解](learning-asset://topic-diagrams/t20-qwen-deltanet.svg)\n\n## 问题场景\n\nQwen 混合架构让大部分层不再保存完整 KV，但平台要判断这是否能转化为 910B 上的真实并发收益，而不是只记住“DeltaNet 省 KV”。\n\n## 第一性原理\n\n可以把 Gated DeltaNet 想成一本随写随更新的压缩笔记，而 full attention 像偶尔回看原始资料。压缩笔记便宜、稳定、长度友好；原始资料昂贵但细节准。混合架构就是把两者按层分工。\n\n## 机制拆解\n\n公开模型卡显示，Qwen3.5 系列采用 Gated DeltaNet 与 Gated Attention 的混合布局，典型模式是若干 DeltaNet 层后接一层 attention。DeltaNet 层维护固定大小状态，Gated Attention 层保留传统 KV。这样大部分层不再随上下文线性增加 KV Cache。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Gated DeltaNet 对 Ascend 的挑战在于专用状态更新 kernel、MTP head、量化格式和 vLLM Ascend 支持。若缺少高效后端，理论长上下文收益会变成 fallback 成本。\n\n## 推导示例\n\n把层分成 DeltaNet 状态层和 Gated Attention 层：前者用固定状态降低随长度增长的 KV，后者保留精确回看。估算并发时，只把 full attention 层纳入传统 KV 增长，同时保留状态矩阵和运行时开销。\n\n1. 3 层 Gated DeltaNet\n2. 1 层 Gated Attention\n3. MoE/FFN\n4. MTP Head\n5. 长上下文部署\n\n## 公式/判断\n\n部署判断可以拆成三步：先看 dense/MoE 与总权重能否放入目标卡，再看只有部分 full attention 层产生传统 KV 时的并发提升，最后看推理框架是否支持 Gated DeltaNet kernel、MTP head、状态缓存和对应量化格式。权重量级可放下不等于生产可服务。\n\n## 放到 GTS 场景\n\n对 GTS 来说，这类模型的吸引力在于长上下文与 agent 循环成本更低。若某个 dense 版本在 FP8/W8A8 等精度下具备单卡放置窗口，混合 attention 会让同样显存下的长上下文并发更友好；但实际可服务上下文、并发和延迟仍要看 KV/状态开销、runtime buffer 与 Ascend 后端实测。\n\n## 工程案例\n\n症状：同显存下 Qwen 混合模型并发优于传统 GQA，但某些长文检索任务波动。观察：full attention 层较少，精确回看依赖特定层。判断：结构省资源但任务质量需分桶评估。动作：按任务类型灰度，保留强检索场景评测。验证：看 needle retrieval、工具调用和长对话一致性。\n\n## 对比与边界\n\n不要把 Gated DeltaNet 等同于“无缓存”。它只是把大部分传统 KV 改成固定状态与少数 attention KV；仍需要显存、kernel 和调度支持。\n\n## 常见误区\n\n常见误区是把 Gated DeltaNet 简化成“没有 KV Cache”。更准确地说，它用固定状态替代传统逐 token KV，仍有状态存储和 kernel 成本。另一个误区是忽略少数 full attention 层，它们仍决定精确检索能力和部分显存增长。\n\n## 专家自检\n\n- Qwen 混合层为什么能降低长上下文 KV 成本？\n- DeltaNet 层和 full attention 层分别承担什么职责？\n- 为什么结构优势必须通过 Ascend kernel 验证？\n\n## 小结\n\nQwen 混合架构的核心价值是把长上下文成本从“所有层都增长”变成“少数层增长”。评估时要同时看模型结构、框架支持和硬件 kernel。"
+      "real_world_connection": "Qwen3-Next-80B-A3B 总参 80B / 激活 3B：每 token 计算量按激活参数（~3B 量级）走，但权重常驻显存仍按总参数（FP16 ≈ 160GB / FP8 ≈ 80GB）；能否落到目标卡型，必须按上下文、KV/状态、runtime buffer、Ascend kernel 和吞吐 SLA 实测确认",
+      "body_md": "## 一句话抓手\n\n> Qwen3-Next 的混合思路是：让 ~75% 的层用便宜的线性状态记忆，剩下 ~25% 保留精确回看能力。\n\n![Gated DeltaNet 混合架构：Qwen3-Next-80B-A3B 的实现 图解](learning-asset://topic-diagrams/t20-qwen-deltanet.svg)\n\n## 问题场景\n\nQwen3-Next-80B-A3B 已经把“大部分层不再保存完整 KV”做进了开源模型卡。但平台要判断这是否能转化为 910B 上的真实并发收益，而不是只记住“DeltaNet 省 KV”。\n\n## 第一性原理\n\n可以把 Gated DeltaNet 想成一本随写随更新的压缩笔记，而 full attention 像偶尔回看原始资料。压缩笔记便宜、稳定、长度友好；原始资料昂贵但细节准。混合架构就是把两者按层分工。\n\n## 机制拆解\n\n> [!FACT]\n> 来源：Qwen3-Next-80B-A3B-Instruct 官方模型卡（Hugging Face / Qwen Team）。Qwen3-Next-80B-A3B 共 48 层，按 12 × (3 个 Gated DeltaNet → MoE + 1 个 Gated Attention → MoE) 排布——每 4 层一个块、每块 3 层线性注意力 + 1 层 softmax 全注意力。Gated Attention 层 16 Q heads / 2 KV heads / head dim 256；Gated DeltaNet 层 32 V heads / 16 QK heads / head dim 128。\n\n3 个 DeltaNet 层依次更新一个固定大小的状态矩阵 S（每个 token 用 delta 规则做局部修订），状态总大小不随上下文长度增长。第 4 层的 Gated Attention 用标准 softmax + GQA 提供精确回看，但 KV 头数压到 2，让传统 KV Cache 占用相对受控。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Gated DeltaNet 的状态更新和 Gated Attention 的低 KV 头配置都需要专用 kernel。截至 2026-04，社区在 vLLM PR #37975 把 GatedDeltaNetAttention 抽成共享层供 Qwen3-Next 和 Qwen3.5 共用，vllm-ascend 侧也在跟进适配。若 Ascend 后端缺少高效的 GDN 状态更新 kernel 或 MoE/GQA 配套，理论长上下文收益会被 fallback 成本吃掉。\n\n## 推导示例\n\n把 48 层分成两类：DeltaNet 状态层（36 层）只贡献固定大小状态，Gated Attention 层（12 层）贡献随长度增长的传统 KV。估算并发时：\n\n1. 算总权重能否放入目标卡（FP16 ≈ 160GB / FP8 ≈ 80GB）\n2. 只把 12 层 Gated Attention 纳入“逐 token KV 增长”\n3. 加上 36 层 DeltaNet 状态矩阵的固定开销\n4. 留出 MTP head 的额外计算与 runtime buffer\n5. 长上下文部署再叠加 prefix cache、chunked prefill 的影响\n\n## 公式/判断\n\n部署判断仍是三步：先看 dense / MoE 与总权重能否放入目标卡（注意 Qwen3-Next 是 MoE，权重不能按“激活 3B”算），再看只有 ~25% 全注意力层贡献传统 KV 时的并发收益相对全 attention 模型有多少绝对差距，最后看推理框架（vLLM / vllm-ascend）是否支持 GatedDeltaNet kernel + MoE 路由 + MTP head + 对应量化格式。\n\n> [!FACT]\n> Qwen 团队在 Qwen3-Next 公开页声明：处理 32K+ 上下文时，Qwen3-Next-80B-A3B 的推理吞吐相对 Qwen3-32B 高 10× 以上。该数字绑定他们的实验设定（上下文长度、batch、硬件、量化），平台引入前必须按本地流量画像和 Ascend 后端实测。\n\n## 放到 GTS 场景\n\n> [!INTERNAL]\n> Qwen3-Next 这类混合 attention + 高稀疏 MoE 模型对 GTS 的吸引力在于“长上下文 + agent 循环”的成本结构更友好——每 token 算力跟激活参数走、KV 增长跟 1/4 的全 attention 层走。落地路径建议：(1) 验证 vllm-ascend 当前版本对 GDN / Gated Attention / MoE / MTP 的覆盖度；(2) 选定量化格式（FP16 / FP8 / W8A8）后做权重与 KV 显存账；(3) 按业务真实长度分布做 TTFT / ITL / 吞吐压测；(4) 与现有全 attention 模型对比，决定是否替换或并存。本节为 GTS 内部经验，未在 Qwen 官方文档中体现。\n\n## 工程案例\n\n症状：同显存预算下，Qwen3-Next 类混合模型并发明显优于全 attention 模型，但某些长文检索任务表现波动。观察：精确回看依赖那 12 层 Gated Attention，少数任务对全注意力路径敏感。判断：结构省资源但任务质量需分桶评估。动作：按任务类型灰度，保留强检索场景评测。验证：看 needle retrieval、工具调用和长对话一致性。\n\n## 对比与边界\n\n不要把 Gated DeltaNet 等同于“无 KV Cache”。它把 36 层的逐 token KV 替换成固定状态 S，但状态本身仍要存、kernel 仍要写；剩下 12 层 Gated Attention 依旧贡献传统 KV，并决定精确检索能力。\n\n## 常见误区\n\n常见误区是把 Gated DeltaNet 简化成“没有 KV Cache”。更准确地说，它用固定状态替代了 75% 层的逐 token KV，但仍有状态存储、状态更新 kernel 和 MoE 路由开销。另一个误区是把 Qwen 团队公布的 “>10× 吞吐” 当成所有上下文长度都成立的结论——它绑定 32K+ 的长上下文设定。\n\n## 专家自检\n\n- Qwen3-Next-80B-A3B 的 48 层为什么能降低长上下文 KV 成本？\n- Gated DeltaNet 状态矩阵和 Gated Attention KV 分别承担什么职责？\n- 为什么“激活 3B”不能直接用来估算权重显存？\n- 如何在引入这类模型前验证 Ascend 后端是否有对应 GDN kernel？\n\n## 小结\n\nQwen3-Next 把长上下文成本从“所有层都增长”变成“只有 1/4 的全注意力层增长”。评估它必须三件事一起看：模型结构（48 层 / 12 × (3+1) / MoE）、推理框架（vLLM / vllm-ascend 的 GDN+MoE+MTP 支持）和硬件 kernel（Ascend 上的 GDN 状态更新 + GQA + MoE 路由）。",
+      "sources": [
+        {
+          "id": "qwen3-next-80b-card",
+          "title": "Qwen3-Next-80B-A3B-Instruct Model Card",
+          "url": "https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct",
+          "publisher": "Hugging Face / Qwen Team",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Qwen3-Next 系列总参 80B / 激活 3B",
+            "48 层 = 12 × (3 个 Gated DeltaNet → MoE + 1 个 Gated Attention → MoE)",
+            "Gated Attention: 16 Q / 2 KV heads, head dim 256",
+            "Gated DeltaNet: 32 V / 16 QK heads, head dim 128",
+            "Multi-Token Prediction (MTP) 推理加速"
+          ]
+        },
+        {
+          "id": "qwen3-next-hf-docs",
+          "title": "Qwen3-Next Overview · Hugging Face Transformers",
+          "url": "https://huggingface.co/docs/transformers/main/model_doc/qwen3_next",
+          "publisher": "Hugging Face Transformers",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Hybrid Attention 架构定义：Gated DeltaNet + Gated Attention 组合",
+            "High-Sparsity MoE 1:50 激活比",
+            "Qwen 团队自报：32K+ 上下文时推理吞吐 > Qwen3-32B 的 10×"
+          ]
+        },
+        {
+          "id": "qwen3-tech-report",
+          "title": "Qwen3 Technical Report (arXiv 2505.09388)",
+          "url": "https://huggingface.co/papers/2505.09388",
+          "publisher": "arXiv / Qwen Team",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Qwen3 系列完整型号清单（6 个 dense + 2 个 MoE）",
+            "Qwen3-30B-A3B / Qwen3-235B-A22B 规格表",
+            "thinking / non-thinking 双模式整合"
+          ]
+        },
+        {
+          "id": "vllm-gdn-pr-37975",
+          "title": "[Model] Extract GatedDeltaNetAttention into shared layer for Qwen3Next and Qwen3.5",
+          "url": "https://github.com/vllm-project/vllm/pull/37975",
+          "publisher": "vLLM Project",
+          "last_verified": "2026-04-28",
+          "confidence": "medium",
+          "covers": [
+            "vLLM 已为 Qwen3-Next 和 Qwen3.5 共用 GatedDeltaNetAttention 实现",
+            "vllm-ascend 侧需要重写 GatedDeltaNet kernel（昇腾落地点的工程依据）"
+          ]
+        },
+        {
+          "id": "gated-delta-networks-paper",
+          "title": "Gated Delta Networks: Improving Mamba2 with Delta Rule",
+          "url": "https://arxiv.org/abs/2412.06464",
+          "publisher": "arXiv (Yang et al., ICLR 2025)",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Gated DeltaNet 的 delta rule + gating 数学定义",
+            "线性注意力 vs softmax attention 复杂度对比",
+            "固定大小状态 S ∈ R^{d_k × d_v} 替代逐 token KV"
+          ]
+        }
+      ]
     },
     {
       "id": "T21",

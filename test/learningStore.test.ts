@@ -4,8 +4,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import seed from '../resources/seed_data.json';
 import { createLearningStore } from '../src/main/learningStore';
+import type { SeedData } from '../src/shared/types';
 
 const tempDirs: string[] = [];
+const seedData = seed as unknown as SeedData;
 
 function makeTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-infra-learning-test-'));
@@ -25,7 +27,7 @@ afterEach(() => {
 
 describe('learning store', () => {
   it('loads the complete seed outline and topic details without SQLite', () => {
-    const store = createLearningStore({ seedData: seed, progressPath: makeProgressPath() });
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const outline = store.getOutline();
     const topic = store.getTopic('T01');
@@ -35,7 +37,7 @@ describe('learning store', () => {
     expect(outline[0].topics[0].id).toBe('T01');
     expect(outline.flatMap((stage) => stage.topics)).toHaveLength(21);
     expect(topic.name).toContain('Compute-bound');
-    expect(topic.keyPoints).toHaveLength(seed.topics[0].key_points.length);
+    expect(topic.keyPoints).toHaveLength(seedData.topics[0].key_points.length);
     expect(topic.bodyMd).toContain('推理优化先不要问');
     expect(topic.bodyMd).not.toMatch(/\?{4,}/);
     expect(topic.status).toBe('not_started');
@@ -45,10 +47,10 @@ describe('learning store', () => {
 
   it('persists topic progress to progress.json across store reinitialization', () => {
     const progressPath = makeProgressPath();
-    const store = createLearningStore({ seedData: seed, progressPath });
+    const store = createLearningStore({ seedData, progressPath });
 
     const updated = store.updateTopicStatus('T01', 'completed');
-    const reopened = createLearningStore({ seedData: seed, progressPath });
+    const reopened = createLearningStore({ seedData, progressPath });
 
     expect(updated.status).toBe('completed');
     expect(reopened.getTopic('T01').status).toBe('completed');
@@ -66,7 +68,7 @@ describe('learning store', () => {
     fs.mkdirSync(path.dirname(progressPath), { recursive: true });
     fs.writeFileSync(progressPath, '{ broken json', 'utf8');
 
-    const store = createLearningStore({ seedData: seed, progressPath });
+    const store = createLearningStore({ seedData, progressPath });
 
     expect(store.getTopic('T01').status).toBe('not_started');
     store.updateTopicStatus('T02', 'in_progress');
@@ -95,7 +97,7 @@ describe('learning store', () => {
       'utf8'
     );
 
-    const store = createLearningStore({ seedData: seed, progressPath });
+    const store = createLearningStore({ seedData, progressPath });
 
     expect(store.getTopic('T01').status).toBe('completed');
     expect(store.getTopic('T02').status).toBe('not_started');
@@ -103,7 +105,7 @@ describe('learning store', () => {
   });
 
   it('rejects invalid topic ids, missing topics, invalid statuses, and invalid seed references', () => {
-    const store = createLearningStore({ seedData: seed, progressPath: makeProgressPath() });
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     expect(() => store.getTopic('bad')).toThrow(/Invalid topicId/);
     expect(() => store.getTopic('T99')).toThrow(/Topic not found/);
@@ -112,8 +114,8 @@ describe('learning store', () => {
       createLearningStore({
         progressPath: makeProgressPath(),
         seedData: {
-          ...seed,
-          topics: seed.topics.map((topic) =>
+          ...seedData,
+          topics: seedData.topics.map((topic) =>
             topic.id === 'T02' ? { ...topic, prerequisites: ['DOES_NOT_EXIST'] } : topic
           )
         }
@@ -122,11 +124,11 @@ describe('learning store', () => {
   });
 
   it('builds the roadmap graph from seed prerequisites and main track metadata', () => {
-    const store = createLearningStore({ seedData: seed, progressPath: makeProgressPath() });
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const graph = store.getRoadmapGraph();
 
-    expect(graph.mainTrack).toEqual(seed.learning_paths?.main_track?.sequence);
+    expect(graph.mainTrack).toEqual(seedData.learning_paths?.main_track?.sequence);
     expect(graph.edges).toContainEqual({ from: 'T01', to: 'T02' });
     expect(graph.edges).toContainEqual({ from: 'T17', to: 'T18' });
   });
@@ -134,7 +136,7 @@ describe('learning store', () => {
   it('ships expanded markdown content and a bundled diagram for every topic', () => {
     const diagramPattern = /!\[[^\]]+\]\(learning-asset:\/\/topic-diagrams\/([a-z0-9-]+\.svg)\)/;
 
-    for (const topic of seed.topics) {
+    for (const topic of seedData.topics) {
       expect(topic.body_md?.trim(), topic.id).toBeTruthy();
       expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
       expect(topic.body_md, topic.id).toContain('## 一句话抓手');
@@ -143,5 +145,39 @@ describe('learning store', () => {
       expect(match?.[1], topic.id).toBeTruthy();
       expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);
     }
+  });
+
+  it('exposes the sources array for topics that declare authoritative references', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const t20 = store.getTopic('T20');
+
+    expect(t20.sources.length).toBeGreaterThanOrEqual(3);
+    for (const source of t20.sources) {
+      expect(source.id).toMatch(/^[a-z0-9-]+$/);
+      expect(source.url).toMatch(/^https?:\/\//);
+      expect(['high', 'medium', 'low']).toContain(source.confidence);
+      expect(source.last_verified).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(Array.isArray(source.covers)).toBe(true);
+      expect(source.covers.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('returns an empty sources array for topics without an explicit sources field', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const t01 = store.getTopic('T01');
+
+    expect(t01.sources).toEqual([]);
+  });
+
+  it('deep-clones source covers so external mutation does not leak back into the store', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const first = store.getTopic('T20');
+    first.sources[0].covers.push('mutation');
+
+    const second = store.getTopic('T20');
+    expect(second.sources[0].covers).not.toContain('mutation');
   });
 });

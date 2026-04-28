@@ -209,17 +209,118 @@
       "prerequisites": [
         "T19"
       ],
-      "why": "DeepSeek V4代表压缩+稀疏的长上下文路线；其收益来自特定报告设定和实现细节，平台需要学习思路而不是照搬数字",
+      "why": "DeepSeek V4 (V4-Pro 1.6T/49B、V4-Flash 284B/13B) 把 1M 上下文做成 CSA + HCA + Lightning Indexer + sliding window 四件套；平台要先吃透架构，再判断对 vLLM-Ascend 与自研 kernel 的冲击",
       "key_points": [
-        "CSA两步压缩：先做KV压缩（如报告设定中的softmax-gated pooling），再用Lightning Indexer做top-k稀疏选择 + sliding window保留近邻",
-        "HCA超压缩：按特定设计粒度压缩到极短序列后做dense attention，提供廉价全局视野",
-        "CSA/HCA交替排列：CSA提供精确稀疏检索，HCA提供模糊全局概览，各层职责不同",
-        "与V3 MLA的对比：V3用latent压缩KV，V4用压缩+稀疏+超压缩，收益依赖learned compressor质量和层型配置",
-        "低精度深度融入架构：Lightning Indexer使用FP4，MoE expert权重采用FP4 QAT等设计需按公开报告语境理解",
-        "对推理框架的挑战：CSA/HCA非标准attention，vLLM/SGLang/昇腾适配需按版本和kernel计划持续评估"
+        "CSA 沿序列维 4× 压缩：softmax-gated pooling + 学到的位置偏置 → Lightning Indexer 选 top-k 压缩块 → 附一条 sliding window 保留 recency",
+        "HCA 沿序列维 128× 压缩：在压缩短序列上做 dense MQA over compressed blocks，提供低成本全局视野",
+        "V4-Pro 61 层架构：Layer 0–1 仅 HCA，Layer 2–60 CSA 与 HCA 交替，末尾 MTP 块仅 sliding-window",
+        "Lightning Indexer 跑 FP4 + ReLU-scored multi-head dot product；KV 存储 FP8（大部分）+ BF16（仅 RoPE 维度）+ FP4（indexer 权重）；instruct 模型 MoE expert 权重 FP4、其它 FP8",
+        "V4-Pro 1.6T/49B、V4-Flash 284B/13B，均 1M context；V4-Pro 1M 上下文下 KV 是 V3.2 的 10%、单 token FLOPs 是 27%（与传统 GQA-8H/BF16 相比 KV 约 2%）",
+        "对推理框架的挑战：CSA/HCA + FP4 indexer 不是 vLLM/SGLang 的标准 attention/quant 路径，vllm-ascend 主仓库截至 2026-04 尚未出现 V4 适配 PR"
       ],
-      "real_world_connection": "V4-Pro(1.6T)/Flash(284B)暂时不会在910B3上跑；CSA/HCA设计思想可能影响后续开源模型，需提前评估vLLM Ascend适配难度和业务长上下文需求",
-      "body_md": "## 一句话抓手\n\n> DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。\n\n![DeepSeek V4的CSA/HCA混合注意力 图解](learning-asset://topic-diagrams/t21-deepseek-csa-hca.svg)\n\n## 问题场景\n\nDeepSeek V4 类路线把超长上下文从“完整保存”转向“压缩、索引、稀疏检索”。平台侧要提前判断这种非标准 attention 对 vLLM Ascend 与自研 kernel 的冲击。\n\n## 第一性原理\n\n把 1M token 上下文想成一整座档案馆。CSA 像先把每几页压成摘要，再用索引找到最相关的几摞；HCA 像把整馆压成更短目录，然后每次都扫一遍目录。两者交替，让局部细节和全局视野兼得。\n\n## 机制拆解\n\n公开技术报告摘要描述了 CSA 与 HCA 的混合 attention。CSA 对 KV 做较小倍率压缩，再用 Lightning Indexer 选择 top-k 压缩块，并保留滑动窗口处理最近 token。HCA 使用更高倍率的序列维压缩，对压缩后的短序列做 dense attention，提供低成本全局视野。具体收益要回到报告设定、层型比例和实现细节。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CSA/HCA 这类机制可能需要压缩器、索引器、滑动窗口和特殊 attention kernel。Ascend 适配不只是把算子编译通过，还要验证低精度、访存模式和长上下文下的稳定性。\n\n## 推导示例\n\nCSA 适合较轻压缩后做稀疏精确检索，HCA 适合重压缩后做低成本全局概览，滑动窗口保留最近 token。估算成本要把压缩、索引、检索和 dense-on-compressed 全部算进去。\n\n1. CSA 压缩\n2. Top-K Sparse\n3. 高倍率 HCA 压缩\n4. Dense on Compressed\n5. Sliding Window\n\n## 公式/判断\n\n理解它可以用“压缩粒度 × 检索方式”两维：CSA 压缩较轻、检索稀疏，适合精确找到相关历史；HCA 压缩更重、检索密集，适合全局粗看。滑动窗口则保证最近上下文不被过度压缩。类似 m′=128 的数字应理解为特定设计下的序列维压缩粒度，不是所有场景的总 KV 压缩率。\n\n## 放到 GTS 场景\n\nGTS 近期不一定直接在 910B3 上跑 V4-Pro 级别模型，但这条路线可能影响未来开源模型和推理框架。平台需要持续评估 vLLM Ascend、SGLang 或自研 kernel 对非标准 attention 的适配成本，而不是预设适配节奏。\n\n## 工程案例\n\n症状：模型宣传 KV 极低，但平台试跑发现 kernel 链复杂、延迟不稳定。观察：索引器和压缩步骤占比高，长上下文收益要到大长度才显现。判断：适合特定长上下文，不一定适合所有在线对话。动作：按上下文长度和任务类型分池。验证：比较短/中/超长请求的成本曲线。\n\n## 对比与边界\n\nCSA/HCA 代表方向，不代表短期一定适合 910B 生产主力。是否引入取决于开源实现成熟度、CANN kernel 成本、模型质量和业务长上下文需求。\n\n## 常见误区\n\n常见误区是只记住“KV 变小”，忽略压缩器和索引器本身的计算、精度和工程复杂度。另一个误区是认为所有请求都需要 1M 上下文；短上下文场景可能更看重普通 decode 延迟。\n\n## 专家自检\n\n- CSA 和 HCA 分别解决哪类历史检索问题？\n- 为什么超长上下文模型可能在短请求上没有优势？\n- 非标准 attention 给推理框架带来哪些适配成本？\n\n## 小结\n\nCSA/HCA 代表长上下文模型从“完整保存历史”走向“压缩、索引、局部保真”的方向。它对平台的启示是：未来瓶颈会越来越多地出现在特殊 attention kernel 和缓存管理。"
+      "real_world_connection": "V4-Pro 量化后 HF 仓库 size 仍为 862B 体量，单卡 64GB 无法承载；多机切分 + Ascend kernel 适配是 GTS 引入路线的工程关键。V4-Flash 量化后 158B 体量更可能进入实测视野，但仍需 vllm-ascend 对 CSA/HCA/FP4 indexer 的官方适配 PR 落地",
+      "body_md": "## 一句话抓手\n\n> DeepSeek V4 的注意力思路不是完全不看历史，而是先把历史压短，再决定精确找还是粗略看。\n\n![DeepSeek V4的CSA/HCA混合注意力 图解](learning-asset://topic-diagrams/t21-deepseek-csa-hca.svg)\n\n## 问题场景\n\nDeepSeek V4 系列（HuggingFace 上对应 DeepSeek-V4-Pro 1.6T/49B 与 DeepSeek-V4-Flash 284B/13B，含 Base / Instruct 共 4 个仓库，均 1M context）把超长上下文从“完整保存”转向“压缩、索引、稀疏检索 + sliding window”。平台侧要提前判断这种非标准 attention 对 vLLM-Ascend 与自研 kernel 的冲击。\n\n## 第一性原理\n\n把 1M token 上下文想成一整座档案馆。CSA 像先把每几页压成摘要，再用索引找到最相关的几摞；HCA 像把整馆压成更短目录，然后每次都扫一遍目录。两者交替，让局部细节和全局视野兼得。\n\n## 机制拆解\n\n> [!FACT]\n> 来源：HuggingFace 官方 DeepSeek V4 介绍博客（2026-04-24 发布）。V4-Pro 共 61 层：Layer 0–1 仅 HCA，Layer 2–60 CSA 与 HCA 交替，末尾 MTP 块仅 sliding-window。CSA 沿序列维做 4× 压缩（softmax-gated pooling + 学到的位置偏置），其后由 Lightning Indexer 选 top-k 压缩块再做 attention，并附一条 sliding window 分支保留 recency。HCA 做 128× 压缩，其后在压缩短序列上做 dense MQA over compressed blocks，不再做稀疏 top-k 选择。\n\n> [!FACT]\n> 来源：HuggingFace V4-Pro 模型卡。Lightning Indexer 跑在 FP4，使用 ReLU-scored multi-head dot product 给候选块打分。KV 存储采用 FP8（大部分 entry）+ BF16（仅 RoPE 维度）+ FP4（indexer 权重）的混合精度；instruct 模型的 MoE expert 权重为 FP4，其它权重为 FP8；base 模型则 FP8 throughout。32T+ token 预训练，引入 Manifold-Constrained Hyper-Connections (mHC) 与 Muon 优化器。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> CSA/HCA + Lightning Indexer 不是 vLLM/SGLang 的标准 attention/quant 路径。Ascend 适配不只是把算子编译通过，还要验证 FP4 indexer 的 kernel 可达精度、CSA 4× 压缩与 sliding window 的访存模式、HCA 128× 压缩短序列上的 dense MQA 吞吐。截至 2026-04，vllm-ascend 主仓库尚未出现 V4 / CSA / HCA / FP4 indexer 的官方适配 PR。\n\n## 推导示例\n\nCSA 适合较轻压缩后做稀疏精确检索，HCA 适合重压缩后做低成本全局概览，sliding window 保留最近 token 的精确细节。估算 V4 的实际成本要把压缩（softmax-gated pooling）、索引（FP4 Lightning Indexer）、检索（top-k）和 dense-on-compressed 四条路径全部算进去，而不是只看“KV 体积小了多少”。\n\n1. 原始 1M KV → CSA 4× 压缩\n2. Lightning Indexer (FP4) 选 top-k 压缩块\n3. HCA 128× 压缩 → dense MQA over compressed blocks\n4. Sliding Window 保留 recency 的精确细节\n\n## 公式/判断\n\n> [!FACT]\n> 来源：HuggingFace V4-Pro 模型卡 + HuggingFace 官方博客。1M 上下文设定下，V4-Pro 单 token 推理 FLOPs 是 V3.2 的 27%、KV cache 是 V3.2 的 10%；V4-Flash KV 是 V3.2 的 7%、FLOPs 是 V3.2 的 10%。换一个对照基准，V4 KV 与传统 GQA（8 头, BF16）相比约为 2%——这是公开讨论“2% KV cache figure”时常见的口径。两个口径不是同一种比较，引用时务必同时写明 baseline。\n\n## 放到 GTS 场景\n\n> [!INTERNAL]\n> V4-Pro 总参 1.6T，量化后 HF 仓库 size 仍为 862B 体量，单卡 64GB 无法承载；是否进入 910B3 资源池取决于多机切分、量化进一步细化和 Ascend kernel 适配进度。V4-Flash 量化后 158B 体量，进入工程实测视野的概率更高，但仍需 vllm-ascend 对 CSA/HCA/FP4 indexer 的适配 PR 落地。本节为 GTS 内部判断，未在 DeepSeek 官方文档中体现。\n\n## 工程案例\n\n> [!ASSUMPTION]\n> 下面是基于 V4 公开架构推演的“如果引入 V4 会发生什么”示例，不是 GTS 现网已发生的事件。Lightning Indexer top-k 与 sliding window 长度官方均未公开，相关数字仅作示例。\n\n症状：V4-Flash 在试跑环境延迟波动大，indexer 和压缩环节占主路径耗时。观察：FP4 indexer kernel 在某代 NPU 上未充分优化，HCA 128× 压缩短序列上的 dense MQA 与 batch 形态不匹配。判断：1M 上下文真正落地需要 indexer / CSA / HCA / sliding window 四条路径协同优化。动作：先把 V4-Flash 限流在中等长度上下文场景做基线，逐步扩展长上下文，并按 batch 形态分池。验证：比较短 / 中 / 超长请求的 TTFT、ITL、KV 水位曲线。\n\n## 对比与边界\n\nDeepSeek V3 的 MLA（低秩压缩 KV）和 V3.2 的 DSA（Lightning Indexer + Token Selector）是 V4 的设计前置。V4 把 V3.2 的 DSA 升级为 CSA + HCA 双层稀疏方案，并把 indexer 量化下推到 FP4。是否引入 V4 取决于开源实现成熟度、CANN/kernel 适配成本、模型质量和业务长上下文需求；架构创新不等于上线即用。\n\n## 常见误区\n\n常见误区是只记住“KV 变小”，忽略 indexer 和压缩本身的计算、精度和工程复杂度。另一个误区是把“V4-Pro KV 是 V3.2 的 10%”和“V4 KV 与 GQA-8H/BF16 相比约 2%”两个数字混用——这是两种不同 baseline 的比较，混用会让读者误解 V4 的实际收益曲线。第三个误区是认为所有请求都需要 1M 上下文；短上下文场景可能更看重普通 decode 延迟。\n\n## 专家自检\n\n- CSA 与 HCA 各自解决哪类历史检索问题？为什么要交替排列？\n- Lightning Indexer 跑在 FP4 对哪类硬件最不友好？为什么 RoPE 维度坚持用 BF16？\n- 同样是“KV 大幅下降”，V4-Pro vs V3.2 = 10% 与 vs GQA-8H/BF16 ≈ 2% 为什么是两个口径？\n- 非标准 attention + FP4 indexer 给 vllm-ascend 适配带来哪些边界？\n\n## 小结\n\nV4 把长上下文从“保存全部历史”推到“压缩 + 索引 + 稀疏检索 + sliding window”四件套。它对平台的启示：未来推理瓶颈会越来越多地出现在特殊 attention kernel、低位量化算子和 indexer 调度上，而不只是显存容量本身。",
+      "sources": [
+        {
+          "id": "deepseek-v4-pro-card",
+          "title": "DeepSeek-V4-Pro Model Card",
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+          "publisher": "Hugging Face / DeepSeek",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "DeepSeek-V4-Pro: 1.6T 总参 / 49B 激活，1M context",
+            "Hybrid Attention 架构：CSA + HCA",
+            "1M 上下文下 vs V3.2: 27% 单 token FLOPs / 10% KV cache",
+            "FP4 + FP8 Mixed: MoE expert FP4，其它 FP8",
+            "32T+ 预训练 token，Manifold-Constrained Hyper-Connections (mHC)，Muon Optimizer"
+          ]
+        },
+        {
+          "id": "deepseek-v4-flash-card",
+          "title": "DeepSeek-V4-Flash Model Card",
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash",
+          "publisher": "Hugging Face / DeepSeek",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "DeepSeek-V4-Flash: 284B 总参 / 13B 激活，1M context",
+            "与 V4-Pro 共享 CSA/HCA + FP4/FP8 mixed 架构",
+            "Base 版 FP8 throughout，Instruct 版 FP4 (experts) + FP8 (rest)"
+          ]
+        },
+        {
+          "id": "hf-deepseek-v4-blog",
+          "title": "DeepSeek-V4: a million-token context that agents can actually use",
+          "url": "https://huggingface.co/blog/deepseekv4",
+          "publisher": "Hugging Face Blog",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "V4-Pro 61 层：layers 0-1 HCA only，layers 2-60 CSA/HCA 交替，末尾 MTP 块 sliding-window only",
+            "CSA: 4× 压缩 (softmax-gated pooling + learned positional bias)",
+            "HCA: 128× 压缩 + dense MQA over compressed blocks",
+            "Lightning Indexer 跑在 FP4，ReLU-scored multi-head dot product 选 top-k 块",
+            "KV: FP8 大部分 + BF16 only for RoPE dims + FP4 for indexer weights",
+            "V4-Pro KV vs V3.2 = 10%，V4-Flash KV vs V3.2 = 7%；vs 传统 GQA(8 头, BF16) ≈ 2%"
+          ]
+        },
+        {
+          "id": "deepseek-v4-api-announcement",
+          "title": "DeepSeek V4 Preview Release | DeepSeek API Docs",
+          "url": "https://api-docs.deepseek.com/news/news260424",
+          "publisher": "DeepSeek",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "V4 preview 上线时间：2026-04-24",
+            "V4-Pro 1.6T/49B + V4-Flash 284B/13B",
+            "1M context 默认全量服务",
+            "Token-wise compression + DSA 在 V4 的延伸"
+          ]
+        },
+        {
+          "id": "deepseek-v3-2-paper",
+          "title": "DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models",
+          "url": "https://arxiv.org/abs/2512.02556",
+          "publisher": "arXiv / DeepSeek-AI",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "DSA（DeepSeek Sparse Attention）= Lightning Indexer + Fine-grained Token Selector",
+            "DSA 把 attention 复杂度从 O(L²) 降到 O(L·k)",
+            "V3.2 与 V3.1-Terminus 性能相当",
+            "V3.2 是 V4 KV/FLOPs 对比的基准模型"
+          ]
+        },
+        {
+          "id": "deepseek-v3-tech-report",
+          "title": "DeepSeek-V3 Technical Report",
+          "url": "https://arxiv.org/abs/2412.19437",
+          "publisher": "arXiv / DeepSeek-AI",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "DeepSeek-V3: 671B 总参 / 37B 激活，MLA + DeepSeekMoE",
+            "MLA: nh=128，dh=128，dc(KV 压缩)=512",
+            "MLA 通过低秩压缩降低 KV cache 体积"
+          ]
+        },
+        {
+          "id": "deepseek-v3-2-exp-card",
+          "title": "DeepSeek-V3.2-Exp Model Card",
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2-Exp",
+          "publisher": "Hugging Face / DeepSeek",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "V3.2-Exp 256 个专家",
+            "128k context",
+            "DSA 在 V3.2 中首次以 fine-grained sparse attention 形态落地",
+            "FP8 + BF16 RoPE 量化方案（V4 沿用并扩展）"
+          ]
+        }
+      ]
     },
     {
       "id": "T04",

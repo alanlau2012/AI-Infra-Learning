@@ -163,6 +163,19 @@ describe('learning store', () => {
     }
   });
 
+  it('documents the T03 Qwen MoE example with verified sources', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const t03 = store.getTopic('T03');
+    const combinedText = [t03.name, t03.realWorldConnection, ...t03.keyPoints, t03.bodyMd].join('\n');
+
+    expect(fs.existsSync(path.join(process.cwd(), 'resources', 'source-snapshots', 'T03.md'))).toBe(true);
+    expect(combinedText).not.toContain('Qwen3.5-35B-A3B');
+    expect(combinedText).toContain('Qwen3-30B-A3B');
+    expect(t03.sources.some((source) => source.id === 'qwen3-tech-report')).toBe(true);
+    expect(t03.bodyMd).toContain('[!FACT]');
+  });
+
   it('returns an empty sources array for topics without an explicit sources field', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 

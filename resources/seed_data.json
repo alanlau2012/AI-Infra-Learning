@@ -63,8 +63,35 @@
         "单卡容量规划要区分总KV与per-rank KV，TP下能否分摊取决于KV head分片和后端实现",
         "长上下文场景KV Cache近似随seq_len线性增长，seq_len从4K到32K时KV约增长8倍"
       ],
-      "real_world_connection": "评估MiniMax、Qwen等模型在910B3/B4上的并发时，需要把权重、KV、block碎片和运行时预留放到同一张单卡预算表里",
-      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 放到 GTS 场景\n\n例如内部评估 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。"
+      "real_world_connection": "评估 MiniMax-M2 系列、Qwen 等模型族在 910B3/B4 上的并发时，需要把权重、KV、block 碎片和运行时预留放到同一张单卡预算表里；具体版本以官方模型卡为准。",
+      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 放到 GTS 场景\n\n例如内部评估 MiniMax-M2 系列、Qwen 等模型族在 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。",
+      "sources": [
+        {
+          "id": "minimax-hf-org",
+          "title": "MiniMaxAI Hugging Face Organization",
+          "url": "https://huggingface.co/MiniMaxAI",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax 官方 Hugging Face 组织入口",
+            "MiniMax-M2、MiniMax-M2.1、MiniMax-M2.5、MiniMax-M2.7 等模型入口"
+          ]
+        },
+        {
+          "id": "minimax-m2-card",
+          "title": "MiniMax-M2 Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M2",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "官方模型 ID 为 MiniMax-M2",
+            "官方描述为约 230B total parameters / 10B active parameters 的 MoE 模型",
+            "模型卡显示 229B params"
+          ]
+        }
+      ]
     },
     {
       "id": "T03",

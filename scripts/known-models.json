@@ -72,6 +72,31 @@
       "name": "Mixtral-8x7B",
       "publisher": "Mistral AI",
       "official_url": "https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1"
+    },
+    {
+      "name": "MiniMax-M1",
+      "publisher": "MiniMax",
+      "official_url": "https://huggingface.co/MiniMaxAI/MiniMax-M1-80k-hf"
+    },
+    {
+      "name": "MiniMax-M2",
+      "publisher": "MiniMax",
+      "official_url": "https://huggingface.co/MiniMaxAI/MiniMax-M2"
+    },
+    {
+      "name": "MiniMax-M2.1",
+      "publisher": "MiniMax",
+      "official_url": "https://huggingface.co/MiniMaxAI/MiniMax-M2.1"
+    },
+    {
+      "name": "MiniMax-M2.5",
+      "publisher": "MiniMax",
+      "official_url": "https://huggingface.co/MiniMaxAI/MiniMax-M2.5"
+    },
+    {
+      "name": "MiniMax-M2.7",
+      "publisher": "MiniMax",
+      "official_url": "https://huggingface.co/MiniMaxAI/MiniMax-M2.7"
     }
   ],
   "notes": [

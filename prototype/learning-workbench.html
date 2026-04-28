@@ -1,0 +1,1216 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Infra Learning - 阅读工作台原型</title>
+    <style>
+      :root {
+        --bg: #101214;
+        --surface: #171a1d;
+        --surface-2: #1f2327;
+        --surface-3: #272c31;
+        --line: rgba(224, 230, 235, 0.1);
+        --line-strong: rgba(224, 230, 235, 0.18);
+        --text: #edf1f3;
+        --muted: #a9b1b8;
+        --soft: #c8d0d6;
+        --teal: #3dd6c6;
+        --green: #61d394;
+        --amber: #f6c453;
+        --coral: #ff8a7a;
+        --blue: #7ab7ff;
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+        --radius: 8px;
+        color-scheme: dark;
+        font-family:
+          Inter, "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        height: 100%;
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 1120px;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at 78% 8%, rgba(61, 214, 198, 0.12), transparent 28%),
+          linear-gradient(135deg, #101214 0%, #151719 48%, #0e1113 100%);
+        color: var(--text);
+      }
+
+      button,
+      a {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 304px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        border-right: 1px solid var(--line);
+        background: rgba(19, 21, 23, 0.94);
+      }
+
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        min-height: 78px;
+        padding: 18px 18px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border: 1px solid rgba(61, 214, 198, 0.42);
+        border-radius: 10px;
+        color: var(--teal);
+        background: rgba(61, 214, 198, 0.08);
+        font-weight: 900;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.2;
+      }
+
+      .brand p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .journey {
+        display: grid;
+        gap: 12px;
+        padding: 14px 12px 28px;
+      }
+
+      .stage {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .stage-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 2px 9px;
+      }
+
+      .stage-id {
+        display: inline-grid;
+        place-items: center;
+        min-width: 34px;
+        height: 24px;
+        border-radius: 6px;
+        background: rgba(122, 183, 255, 0.11);
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .stage-name {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 13px;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .topic-list {
+        display: grid;
+        gap: 5px;
+      }
+
+      .topic-button {
+        display: grid;
+        grid-template-columns: 12px 38px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 42px;
+        padding: 7px 9px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--soft);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .topic-button:hover,
+      .topic-button.active {
+        border-color: rgba(61, 214, 198, 0.28);
+        background: rgba(61, 214, 198, 0.075);
+        color: var(--text);
+      }
+
+      .topic-button.active {
+        box-shadow: inset 3px 0 0 var(--teal);
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #68727c;
+      }
+
+      .status-dot.in_progress {
+        background: var(--blue);
+        box-shadow: 0 0 0 4px rgba(122, 183, 255, 0.12);
+      }
+
+      .status-dot.completed {
+        background: var(--green);
+        box-shadow: 0 0 0 4px rgba(97, 211, 148, 0.12);
+      }
+
+      .topic-code {
+        color: #95d8ff;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .topic-name {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 13px;
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .main {
+        min-width: 0;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        min-height: 78px;
+        padding: 14px 30px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(16, 18, 20, 0.86);
+        backdrop-filter: blur(18px);
+      }
+
+      .topbar-title {
+        min-width: 0;
+      }
+
+      .eyebrow {
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .topbar h2 {
+        margin: 4px 0 0;
+        overflow: hidden;
+        font-size: 20px;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .progress-strip {
+        display: grid;
+        grid-template-columns: auto 160px auto;
+        gap: 12px;
+        align-items: center;
+        min-width: 420px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .progress-number {
+        color: var(--text);
+        font-size: 20px;
+        font-weight: 900;
+      }
+
+      .progress-track {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .progress-fill {
+        width: 24%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--green), var(--teal));
+      }
+
+      .progress-meta {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 820px) 304px;
+        gap: 28px;
+        align-items: start;
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 28px 30px 46px;
+      }
+
+      .reader {
+        min-width: 0;
+      }
+
+      .topic-hero {
+        padding: 24px;
+        border: 1px solid var(--line-strong);
+        border-radius: 10px;
+        background:
+          linear-gradient(135deg, rgba(61, 214, 198, 0.1), transparent 42%),
+          rgba(28, 31, 34, 0.86);
+        box-shadow: var(--shadow);
+      }
+
+      .hero-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .stage-kicker {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .topic-hero h3 {
+        margin: 9px 0 0;
+        max-width: 680px;
+        font-size: 30px;
+        line-height: 1.18;
+      }
+
+      .hero-summary {
+        max-width: 720px;
+        margin: 16px 0 0;
+        color: var(--soft);
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        min-width: 96px;
+        height: 34px;
+        border: 1px solid rgba(122, 183, 255, 0.36);
+        border-radius: 999px;
+        color: #cfe6ff;
+        background: rgba(122, 183, 255, 0.1);
+        font-size: 13px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .status-badge.completed {
+        border-color: rgba(97, 211, 148, 0.42);
+        color: #d7ffe5;
+        background: rgba(97, 211, 148, 0.1);
+      }
+
+      .status-badge.not_started {
+        border-color: rgba(169, 177, 184, 0.3);
+        color: var(--soft);
+        background: rgba(255, 255, 255, 0.045);
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .meta-item {
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      .meta-item span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .meta-item strong {
+        display: block;
+        margin-top: 5px;
+        color: var(--text);
+        font-size: 14px;
+      }
+
+      .insight-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 16px 0 22px;
+      }
+
+      .insight {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .insight h4 {
+        margin: 0 0 8px;
+        color: var(--teal);
+        font-size: 13px;
+      }
+
+      .insight p,
+      .insight li {
+        color: var(--soft);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .insight p,
+      .insight ol {
+        margin: 0;
+      }
+
+      .insight ol {
+        padding-left: 18px;
+      }
+
+      .article-body {
+        padding: 8px 2px 0;
+        color: var(--soft);
+        font-size: 16px;
+        line-height: 1.85;
+      }
+
+      .article-body section {
+        scroll-margin-top: 96px;
+      }
+
+      .article-body h2 {
+        margin: 28px 0 11px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--line);
+        color: var(--text);
+        font-size: 22px;
+        line-height: 1.35;
+      }
+
+      .article-body p {
+        margin: 10px 0;
+      }
+
+      .pullquote {
+        margin: 20px 0;
+        padding: 18px 20px;
+        border-left: 4px solid var(--teal);
+        border-radius: var(--radius);
+        background: rgba(61, 214, 198, 0.08);
+        color: #e8fffb;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.7;
+      }
+
+      .diagram {
+        margin: 18px 0 24px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f6f9fb;
+      }
+
+      .diagram img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .callout {
+        margin: 16px 0;
+        padding: 14px 16px;
+        border: 1px solid rgba(122, 183, 255, 0.28);
+        border-left: 4px solid var(--blue);
+        border-radius: var(--radius);
+        background: rgba(122, 183, 255, 0.08);
+      }
+
+      .callout strong {
+        color: #cfe6ff;
+      }
+
+      .flow-list {
+        display: grid;
+        gap: 8px;
+        margin: 14px 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .flow-list li {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .flow-list b {
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: rgba(246, 196, 83, 0.14);
+        color: var(--amber);
+        font-size: 12px;
+      }
+
+      .side-panel {
+        position: sticky;
+        top: 102px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .panel-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(27, 30, 33, 0.88);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-head h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .panel-head span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .panel-body {
+        padding: 13px 14px 14px;
+      }
+
+      .toc {
+        display: grid;
+        gap: 4px;
+      }
+
+      .toc a {
+        display: block;
+        padding: 7px 8px;
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .toc a:hover,
+      .toc a.active {
+        background: rgba(61, 214, 198, 0.09);
+        color: var(--text);
+      }
+
+      .status-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+
+      .status-actions button {
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.035);
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .status-actions button.active {
+        border-color: rgba(61, 214, 198, 0.42);
+        background: rgba(61, 214, 198, 0.12);
+        color: var(--text);
+      }
+
+      .pill-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--soft);
+        background: rgba(255, 255, 255, 0.035);
+        font-size: 12px;
+      }
+
+      .source-list,
+      .check-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .source-list li,
+      .check-list li {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.13);
+      }
+
+      .source-list a {
+        display: block;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.35;
+      }
+
+      .source-meta {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .check-list li {
+        color: var(--soft);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .check-list li::before {
+        content: "";
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 8px;
+        border-radius: 50%;
+        background: var(--amber);
+      }
+
+      @media (max-width: 1280px) {
+        .app {
+          grid-template-columns: 284px minmax(0, 1fr);
+        }
+
+        .workspace {
+          grid-template-columns: minmax(0, 1fr) 286px;
+          gap: 22px;
+          padding-inline: 24px;
+        }
+
+        .topic-hero h3 {
+          font-size: 27px;
+        }
+
+        .insight-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" aria-label="学习专题导航">
+        <div class="brand">
+          <div class="brand-mark">AI</div>
+          <div>
+            <h1>AI Infra 学习系统</h1>
+            <p>Phase 1 阅读工作台原型</p>
+          </div>
+        </div>
+        <nav class="journey" id="journey"></nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="eyebrow">Knowledge Workspace</span>
+            <h2 id="topbarTitle">知识点学习</h2>
+          </div>
+          <div class="progress-strip" aria-label="总学习进度">
+            <strong class="progress-number">24%</strong>
+            <div class="progress-track"><div class="progress-fill"></div></div>
+            <span class="progress-meta">5/21 已完成 · 2 学习中</span>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <article class="reader">
+            <section class="topic-hero">
+              <div class="hero-top">
+                <div>
+                  <span class="stage-kicker" id="stageKicker">S1 · 第一性原理 · T01</span>
+                  <h3 id="topicTitle">Compute-bound vs Memory-bound：推理的第一性原理</h3>
+                </div>
+                <span class="status-badge in_progress" id="statusBadge">学习中</span>
+              </div>
+              <p class="hero-summary" id="topicWhy">
+                所有推理优化决策的根基。理解了这个，MTP 为什么有效、batching 为什么重要、P/D 分离为什么必要，全部可以自行推导。
+              </p>
+              <div class="meta-grid">
+                <div class="meta-item">
+                  <span>预计学习</span>
+                  <strong id="timeMeta">45 分钟</strong>
+                </div>
+                <div class="meta-item">
+                  <span>难度</span>
+                  <strong id="difficultyMeta">中级 · 2/3</strong>
+                </div>
+                <div class="meta-item">
+                  <span>学习位置</span>
+                  <strong id="positionMeta">主线第 1 节</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="insight-grid" aria-label="专题摘要">
+              <div class="insight">
+                <h4>学习目标</h4>
+                <p id="goalText">判断推理瓶颈到底落在算力还是 HBM 带宽，并据此选择优化方向。</p>
+              </div>
+              <div class="insight">
+                <h4>关键判断</h4>
+                <ol id="keyPoints"></ol>
+              </div>
+              <div class="insight">
+                <h4>工程落点</h4>
+                <p id="connectionText">MTP、continuous batching、P/D 分离，本质都在提高一次主路径执行的产出。</p>
+              </div>
+            </section>
+
+            <div class="article-body" id="articleBody"></div>
+          </article>
+
+          <aside class="side-panel" aria-label="学习面板">
+            <section class="panel-card">
+              <div class="panel-head">
+                <h4>本节目录</h4>
+                <span id="tocCount">8 段</span>
+              </div>
+              <div class="panel-body">
+                <nav class="toc" id="toc"></nav>
+              </div>
+            </section>
+
+            <section class="panel-card">
+              <div class="panel-head">
+                <h4>学习状态</h4>
+                <span>本地保存</span>
+              </div>
+              <div class="panel-body">
+                <div class="status-actions" id="statusActions">
+                  <button type="button" data-status="not_started">未学</button>
+                  <button type="button" data-status="in_progress">学习中</button>
+                  <button type="button" data-status="completed">完成</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel-card">
+              <div class="panel-head">
+                <h4>前置知识</h4>
+                <span id="prereqCount">0</span>
+              </div>
+              <div class="panel-body">
+                <div class="pill-list" id="prerequisites"></div>
+              </div>
+            </section>
+
+            <section class="panel-card">
+              <div class="panel-head">
+                <h4>可信来源</h4>
+                <span>高置信</span>
+              </div>
+              <div class="panel-body">
+                <ul class="source-list" id="sources"></ul>
+              </div>
+            </section>
+
+            <section class="panel-card">
+              <div class="panel-head">
+                <h4>学习检查点</h4>
+                <span>自测</span>
+              </div>
+              <div class="panel-body">
+                <ul class="check-list" id="checks"></ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const stages = [
+        {
+          id: "S1",
+          name: "第一性原理",
+          topics: ["T01", "T02", "T03", "T19", "T20", "T21"]
+        },
+        {
+          id: "S2",
+          name: "昇腾硬件与推理引擎",
+          topics: ["T04", "T05", "T06", "T07"]
+        },
+        {
+          id: "S3",
+          name: "推理优化与服务化",
+          topics: ["T08", "T09", "T10", "T11", "T12", "T13", "T14"]
+        },
+        {
+          id: "S4",
+          name: "平台与战略",
+          topics: ["T15", "T16", "T17", "T18"]
+        }
+      ];
+
+      const statusLabels = {
+        not_started: "未学习",
+        in_progress: "学习中",
+        completed: "已完成"
+      };
+
+      const topics = {
+        T01: {
+          id: "T01",
+          stageId: "S1",
+          stageName: "第一性原理",
+          name: "Compute-bound vs Memory-bound：推理的第一性原理",
+          status: "in_progress",
+          time: 45,
+          difficulty: 2,
+          position: "主线第 1 节",
+          why:
+            "所有推理优化决策的根基。理解了这个，MTP 为什么有效、batching 为什么重要、P/D 分离为什么必要，全部可以自行推导。",
+          goal: "判断推理瓶颈到底落在算力还是 HBM 带宽，并据此选择优化方向。",
+          keyPoints: [
+            "Arithmetic Intensity = FLOPs / Bytes",
+            "Prefill 通常更接近 compute-bound",
+            "Decode 常受权重读取和 KV 读取限制"
+          ],
+          connection:
+            "MTP、continuous batching、P/D 分离，本质都在提高一次主路径执行的产出。",
+          prerequisites: [],
+          diagram: "../resources/topic-diagrams/t01-roofline.svg",
+          sections: [
+            {
+              id: "hook",
+              title: "一句话抓手",
+              html:
+                '<div class="pullquote">推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。</div><div class="diagram"><img src="../resources/topic-diagrams/t01-roofline.svg" alt="Compute-bound vs Memory-bound 图解"></div>'
+            },
+            {
+              id: "scenario",
+              title: "问题场景",
+              html:
+                "<p>线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。</p>"
+            },
+            {
+              id: "principle",
+              title: "第一性原理",
+              html:
+                "<p>可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。</p>"
+            },
+            {
+              id: "mechanism",
+              title: "机制拆解",
+              html:
+                "<p>Arithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。</p><p>LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满；Dense decode 常由权重读流量和 KV 读取主导，但有效读字节还取决于 MoE、量化、TP 切分和 kernel fusion。</p>"
+            },
+            {
+              id: "ascend",
+              title: "昇腾落地点",
+              html:
+                '<div class="callout"><strong>昇腾落点：</strong>在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。</div>'
+            },
+            {
+              id: "derivation",
+              title: "推导路径",
+              html:
+                '<p>先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上。</p><ol class="flow-list"><li><b>1</b>估算 FLOPs</li><li><b>2</b>估算 Bytes</li><li><b>3</b>计算 Arithmetic Intensity</li><li><b>4</b>对照 Roofline 拐点</li><li><b>5</b>选择优化方向</li></ol>'
+            },
+            {
+              id: "case",
+              title: "工程案例",
+              html:
+                "<p>症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。</p>"
+            },
+            {
+              id: "summary",
+              title: "小结",
+              html:
+                "<p>先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。</p>"
+            }
+          ],
+          sources: [
+            {
+              title: "NVIDIA Roofline Performance Model",
+              publisher: "NVIDIA",
+              confidence: "high",
+              verified: "2026-04-27",
+              url: "https://developer.nvidia.com/blog/accelerating-hpc-applications-with-nsight-compute-roofline-analysis/"
+            },
+            {
+              title: "Ascend CANN Profiling Guide",
+              publisher: "Huawei",
+              confidence: "high",
+              verified: "2026-04-27",
+              url: "https://www.hiascend.com/document"
+            }
+          ],
+          checks: [
+            "Prefill 和 Decode 为什么会落在 Roofline 的不同区域？",
+            "如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？",
+            "一条 TPOT 告警需要哪些硬件与调度指标才能闭环？"
+          ]
+        },
+        T02: {
+          id: "T02",
+          stageId: "S1",
+          stageName: "第一性原理",
+          name: "KV Cache 与显存计算",
+          status: "not_started",
+          time: 40,
+          difficulty: 2,
+          position: "主线第 2 节",
+          why: "KV Cache 大小直接决定集群能服务多少并发用户，是容量规划、硬件分级、模型选型的定量依据。",
+          goal: "把模型权重、KV Cache、运行时开销放到同一张显存预算表里。",
+          keyPoints: ["KV Cache 随 seq_len 和 batch 线性增长", "GQA/MQA 能显著压缩 KV 头数", "单卡账要区分总 KV 与 per-rank KV"],
+          connection: "910B3 与 910B4 的容量差异会直接影响长上下文并发策略。",
+          prerequisites: ["T01"],
+          sections: prototypeSections("KV Cache 与显存计算", "../resources/topic-diagrams/t02-kv-cache.svg"),
+          sources: defaultSources(),
+          checks: ["为什么只算模型权重不够？", "GQA 为什么能降低 KV Cache？", "长上下文扩容最先碰到什么瓶颈？"]
+        },
+        T03: {
+          id: "T03",
+          stageId: "S1",
+          stageName: "第一性原理",
+          name: "MoE vs Dense 的推理差异",
+          status: "completed",
+          time: 30,
+          difficulty: 2,
+          position: "主线第 3 节",
+          why: "MoE 是当前模型架构的重要趋势，理解其推理特性直接影响模型选型和硬件匹配决策。",
+          goal: "区分总参数、激活参数、常驻显存和路由通信开销。",
+          keyPoints: ["总参数决定常驻权重", "激活参数决定单 token 计算", "跨卡 expert 会引入 All-to-All"],
+          connection: "Agent 场景选 MoE 时，不能只看 A3B，还要看总权重、KV 和 expert 布局。",
+          prerequisites: ["T02"],
+          sections: prototypeSections("MoE vs Dense 的推理差异", "../resources/topic-diagrams/t03-moe-router.svg"),
+          sources: defaultSources(),
+          checks: ["A3B 为什么不等于只占 3B 权重？", "热门 expert 如何制造局部瓶颈？", "什么场景 Dense 反而更稳？"]
+        }
+      };
+
+      const fallbackNames = {
+        T04: "Ascend 910B 系列硬件规格与分级策略",
+        T05: "CANN 与 NPU 软件栈",
+        T06: "vLLM PagedAttention",
+        T07: "vLLM Ascend 部署机制",
+        T08: "Prefill / Decode 分离",
+        T09: "MTP 与 Speculative Decoding",
+        T10: "量化与精度策略",
+        T11: "推理指标体系",
+        T12: "网关路由",
+        T13: "流量治理",
+        T14: "可观测性",
+        T15: "多租户隔离",
+        T16: "模型生命周期",
+        T17: "MaaS 平台架构",
+        T18: "硬件策略",
+        T19: "注意力机制演进：从 MHA 到线性注意力",
+        T20: "Gated DeltaNet 混合架构：Qwen3.5/3.6 的做法",
+        T21: "DeepSeek V4 的 CSA/HCA 混合注意力"
+      };
+
+      for (const stage of stages) {
+        for (const id of stage.topics) {
+          if (!topics[id]) {
+            topics[id] = {
+              id,
+              stageId: stage.id,
+              stageName: stage.name,
+              name: fallbackNames[id],
+              status: "not_started",
+              time: id === "T20" || id === "T21" ? 45 : 35,
+              difficulty: id === "T20" || id === "T21" ? 3 : 2,
+              position: `${stage.name} · ${id}`,
+              why: "该专题用于承接 AI Infra 学习主线，帮助学习者把模型、硬件、推理引擎和服务化决策串起来。",
+              goal: "形成可复用的工程判断框架。",
+              keyPoints: ["识别核心约束", "理解机制边界", "映射到 GTS 工程场景"],
+              connection: "用于内部方案评审、容量规划和生产问题定位。",
+              prerequisites: [],
+              sections: prototypeSections(fallbackNames[id], null),
+              sources: defaultSources(),
+              checks: ["这个专题解决哪类工程判断？", "核心指标是什么？", "落到 Ascend 时要验证什么？"]
+            };
+          }
+        }
+      }
+
+      function prototypeSections(title, diagram) {
+        const image = diagram
+          ? `<div class="diagram"><img src="${diagram}" alt="${title} 图解"></div>`
+          : "";
+        return [
+          {
+            id: "hook",
+            title: "一句话抓手",
+            html: `<div class="pullquote">${title} 的关键，不是背术语，而是把资源账、延迟账和工程边界放到同一张图里。</div>${image}`
+          },
+          {
+            id: "scenario",
+            title: "问题场景",
+            html: "<p>团队在模型选型、硬件分级或服务化改造中，需要快速判断瓶颈来自哪里，并把判断转成可执行的验证计划。</p>"
+          },
+          {
+            id: "mechanism",
+            title: "机制拆解",
+            html: "<p>先拆核心机制，再拆资源消耗，最后映射到实际运行时指标。这样可以避免把论文结论、硬件规格和线上 SLA 混成一团。</p>"
+          },
+          {
+            id: "ascend",
+            title: "昇腾落地点",
+            html: '<div class="callout"><strong>昇腾落点：</strong>所有推理能力都需要回到 CANN、vLLM Ascend、HCCL、kernel 成熟度和真实压测结果上验证。</div>'
+          },
+          {
+            id: "summary",
+            title: "小结",
+            html: "<p>掌握这个专题后，学习者应能把概念转成容量、性能、稳定性或平台策略上的具体判断。</p>"
+          }
+        ];
+      }
+
+      function defaultSources() {
+        return [
+          {
+            title: "官方模型或框架文档",
+            publisher: "Official Docs",
+            confidence: "high",
+            verified: "2026-04-27",
+            url: "https://www.hiascend.com/document"
+          }
+        ];
+      }
+
+      const journey = document.querySelector("#journey");
+      const articleBody = document.querySelector("#articleBody");
+      const toc = document.querySelector("#toc");
+      const statusBadge = document.querySelector("#statusBadge");
+      const statusActions = document.querySelector("#statusActions");
+      let currentTopicId = "T01";
+
+      function renderJourney() {
+        journey.innerHTML = stages
+          .map(
+            (stage) => `
+              <section class="stage">
+                <div class="stage-head">
+                  <span class="stage-id">${stage.id}</span>
+                  <strong class="stage-name">${stage.name}</strong>
+                </div>
+                <div class="topic-list">
+                  ${stage.topics
+                    .map((id) => {
+                      const topic = topics[id];
+                      return `
+                        <button class="topic-button ${id === currentTopicId ? "active" : ""}" type="button" data-topic="${id}">
+                          <span class="status-dot ${topic.status}"></span>
+                          <span class="topic-code">${id}</span>
+                          <span class="topic-name">${topic.name}</span>
+                        </button>
+                      `;
+                    })
+                    .join("")}
+                </div>
+              </section>
+            `
+          )
+          .join("");
+
+        journey.querySelectorAll("[data-topic]").forEach((button) => {
+          button.addEventListener("click", () => {
+            currentTopicId = button.dataset.topic;
+            renderAll();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        });
+      }
+
+      function renderTopic() {
+        const topic = topics[currentTopicId];
+        document.querySelector("#topbarTitle").textContent = topic.name;
+        document.querySelector("#stageKicker").textContent = `${topic.stageId} · ${topic.stageName} · ${topic.id}`;
+        document.querySelector("#topicTitle").textContent = topic.name;
+        document.querySelector("#topicWhy").textContent = topic.why;
+        document.querySelector("#timeMeta").textContent = `${topic.time} 分钟`;
+        document.querySelector("#difficultyMeta").textContent = `${"★".repeat(topic.difficulty)} · ${topic.difficulty}/3`;
+        document.querySelector("#positionMeta").textContent = topic.position;
+        document.querySelector("#goalText").textContent = topic.goal;
+        document.querySelector("#connectionText").textContent = topic.connection;
+        document.querySelector("#keyPoints").innerHTML = topic.keyPoints.map((item) => `<li>${item}</li>`).join("");
+        renderStatus(topic.status);
+
+        articleBody.innerHTML = topic.sections
+          .map(
+            (section) => `
+              <section id="${section.id}">
+                <h2>${section.title}</h2>
+                ${section.html}
+              </section>
+            `
+          )
+          .join("");
+
+        toc.innerHTML = topic.sections
+          .map((section, index) => `<a href="#${section.id}" class="${index === 0 ? "active" : ""}">${section.title}</a>`)
+          .join("");
+        document.querySelector("#tocCount").textContent = `${topic.sections.length} 段`;
+
+        document.querySelector("#prereqCount").textContent = String(topic.prerequisites.length);
+        document.querySelector("#prerequisites").innerHTML = topic.prerequisites.length
+          ? topic.prerequisites.map((id) => `<button class="pill" type="button" data-topic="${id}">${id} · ${topics[id].name}</button>`).join("")
+          : '<span class="pill">无需前置知识</span>';
+        document.querySelectorAll("#prerequisites [data-topic]").forEach((button) => {
+          button.addEventListener("click", () => {
+            currentTopicId = button.dataset.topic;
+            renderAll();
+          });
+        });
+
+        document.querySelector("#sources").innerHTML = topic.sources
+          .map(
+            (source) => `
+              <li>
+                <a href="${source.url}" target="_blank" rel="noopener noreferrer">${source.title}</a>
+                <div class="source-meta">
+                  <span>${source.publisher}</span>
+                  <span>${source.confidence}</span>
+                  <span>${source.verified}</span>
+                </div>
+              </li>
+            `
+          )
+          .join("");
+        document.querySelector("#checks").innerHTML = topic.checks.map((item) => `<li>${item}</li>`).join("");
+      }
+
+      function renderStatus(status) {
+        statusBadge.textContent = statusLabels[status];
+        statusBadge.className = `status-badge ${status}`;
+        statusActions.querySelectorAll("button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.status === status);
+        });
+      }
+
+      statusActions.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => {
+          topics[currentTopicId].status = button.dataset.status;
+          renderAll();
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest(".toc a");
+        if (!link) {
+          return;
+        }
+        toc.querySelectorAll("a").forEach((item) => item.classList.remove("active"));
+        link.classList.add("active");
+      });
+
+      function renderAll() {
+        renderJourney();
+        renderTopic();
+      }
+
+      renderAll();
+    </script>
+  </body>
+</html>

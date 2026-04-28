@@ -6,6 +6,8 @@
 
 ## 项目定位
 
+**产品定位：交互式学习产品（非电子书）**。判定标准：核心 5 个 topic（T01 Roofline / T02 KV Cache / T06 vLLM / T09 MTP / T10 量化）必须含交互组件——用户必须"动一下"才能形成判断力。任何 PR 不符合这条定位（例：继续把"卡片+图标"当学习能力堆叠、用纯文本满足"覆盖某概念"）应被拒。如果 Phase 2 的 RooflineChart gate 测试失败（5 人盲测中能凭直觉判 bound 的少于 3 人），整体路线回退到"高保真电子书"，砍 Roadmap/状态机/buildCheckpoints；不接受继续走中间路线。
+
 GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已交付 Phase 1 MVP + Phase 2 第一批增量。
 
 - **Phase 1 已交付**：4 个 Stage / 21 个 Topic 的内置学习内容、专题详情、学习状态持久化、进度统计

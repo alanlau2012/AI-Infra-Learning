@@ -201,9 +201,10 @@ describe('learning store', () => {
   it('returns an empty sources array for topics without an explicit sources field', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
-    const t01 = store.getTopic('T01');
+    // T18 is a strategy topic that intentionally has no external sources field.
+    const t18 = store.getTopic('T18');
 
-    expect(t01.sources).toEqual([]);
+    expect(t18.sources).toEqual([]);
   });
 
   it('deep-clones source covers so external mutation does not leak back into the store', () => {

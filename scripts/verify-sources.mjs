@@ -31,6 +31,13 @@ const SEED_PATH = path.join(ROOT, 'resources', 'seed_data.json');
 const KNOWN_MODELS_PATH = path.join(ROOT, 'scripts', 'known-models.json');
 const HEAD_TIMEOUT_MS = 12_000;
 
+// HuggingFace / arXiv / DOI / 部分 CDN 对无 UA 的 HEAD/GET 不友好，统一带浏览器 UA。
+// 必须在 main() 调用前定义 — 否则 main 同步前缀里的第一个 fetch 会 TDZ 求值 options。
+const REQUEST_HEADERS = {
+  'user-agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) verify-sources/1.0'
+};
+
 const args = parseArgs(process.argv.slice(2));
 
 main().catch((error) => {
@@ -52,6 +59,7 @@ async function main() {
   let unreachableUrls = 0;
   let totalUrls = 0;
   let totalSources = 0;
+  let unsupportedNumberClaims = 0;
 
   console.log(`[verify-sources] 扫描范围：${topics.length} 个 Topic`);
 
@@ -68,6 +76,29 @@ async function main() {
         }
       }
     }
+  }
+
+  // 规则：含工程数字断言（TFLOPS / TB/s / GB / 压缩比 / 百分比）的 topic
+  // 必须至少有一条 high confidence source。否则容易把过时或来路不明的数字
+  // 当真理传播。模型名内嵌的数字（如 Qwen3-30B-A3B、910B3）会先被剥离。
+  console.log('\n[工程数字断言扫描] 含数字但缺 high-confidence source 的 topic：');
+  let topicsFlaggedForNumbers = 0;
+  for (const topic of topics) {
+    const numberHits = scanFactualNumbers(topic);
+    if (numberHits.length === 0) continue;
+
+    const highSources = (topic.sources ?? []).filter((s) => s?.confidence === 'high').length;
+    if (highSources >= 1) continue;
+
+    topicsFlaggedForNumbers += 1;
+    unsupportedNumberClaims += numberHits.length;
+    const sample = numberHits.slice(0, 6).join(', ');
+    console.log(`  [FAIL] ${topic.id} ${topic.name}`);
+    console.log(`         high-confidence sources: ${highSources} / 总 sources: ${(topic.sources ?? []).length}`);
+    console.log(`         发现 ${numberHits.length} 处工程数字断言（前 6 个）：${sample}`);
+  }
+  if (topicsFlaggedForNumbers === 0) {
+    console.log('  [OK] 全部含数字断言的 topic 至少有 1 条 high-confidence source');
   }
 
   if (!args.skipUrls) {
@@ -101,8 +132,10 @@ async function main() {
     console.log(`  不可达 URL: ${unreachableUrls}`);
   }
   console.log(`  可疑模型名: ${suspiciousModels}`);
+  console.log(`  含数字断言但无 high-confidence source 的 topic: ${topicsFlaggedForNumbers}`);
+  console.log(`  其中累计未支撑的数字断言数: ${unsupportedNumberClaims}`);
 
-  const failed = suspiciousModels > 0 || unreachableUrls > 0;
+  const failed = suspiciousModels > 0 || unreachableUrls > 0 || topicsFlaggedForNumbers > 0;
   if (failed) {
     console.error('\n[verify-sources] 发现可疑项，请处理后再次运行。');
     process.exit(1);
@@ -175,6 +208,65 @@ function scanModelMentions(topic, knownModels) {
   return [...hits.values()].map((e) => ({ ...e, locations: [...e.locations] }));
 }
 
+/**
+ * 扫描 topic 中的"工程数字断言"——指容易过时、需要权威来源支撑的硬性数字：
+ *   - 算力: TFLOPS / GFLOPS / TOPS
+ *   - 带宽: TB/s / GB/s / MB/s
+ *   - 显存: GB（独立出现）
+ *   - 压缩比: N×
+ *   - 百分比: N%
+ *
+ * 扫描原则：
+ *   - 先剥离 [!ASSUMPTION] callout（已显式标"假设"，不计入硬断言）
+ *   - 先剥离已知模型名 mention（如 Qwen3-30B-A3B，里面的 30B 不算硬断言）
+ *   - 仅扫 why / real_world_connection / key_points / body_md
+ */
+function scanFactualNumbers(topic) {
+  const factualPatterns = [
+    /\b\d+(?:[.,]\d+)?\s*T?FLOPS\b/g,
+    /\b\d+(?:[.,]\d+)?\s*TOPS\b/g,
+    /\b\d+(?:[.,]\d+)?\s*(?:T|G|M)B\/s\b/g,
+    /\b\d+(?:[.,]\d+)?\s*GB\b/g,
+    /\b\d+(?:[.,]\d+)?\s*×/g,
+    /\b\d+(?:[.,]\d+)?\s*%/g
+  ];
+
+  const modelStripPatterns = [
+    /\bQwen\d+(?:\.\d+)?(?:-Next)?-\d+(?:\.\d+)?B(?:-A\d+(?:\.\d+)?B)?(?:-[A-Za-z][A-Za-z0-9]*)*\b/g,
+    /\bDeepSeek-V\d+(?:\.\d+)?(?:-[A-Za-z][A-Za-z0-9]*)*\b/g,
+    /\bMixtral-\d+x\d+B\b/g,
+    /\bLlama-?\d+(?:\.\d+)?-\d+B\b/gi,
+    /\bMiniMax(?:[\s-]M?\d+(?:\.\d+)?)?\b/g,
+    /\b910B[1234]?\b/g,
+    /\bH100\b/g,
+    /\bA100\b/g
+  ];
+
+  const fields = [
+    topic.why ?? '',
+    topic.real_world_connection ?? '',
+    (topic.key_points ?? []).join('\n'),
+    stripAssumptionCallouts(topic.body_md ?? '')
+  ];
+
+  let scrubbed = fields.join('\n');
+  for (const pattern of modelStripPatterns) {
+    pattern.lastIndex = 0;
+    scrubbed = scrubbed.replace(pattern, '<MODEL>');
+  }
+
+  const hits = [];
+  for (const pattern of factualPatterns) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(scrubbed))) {
+      const value = match[0].trim();
+      if (value.length > 0) hits.push(value);
+    }
+  }
+  return hits;
+}
+
 function stripAssumptionCallouts(markdown) {
   const kept = [];
   let skipping = false;
@@ -197,13 +289,6 @@ function stripAssumptionCallouts(markdown) {
 
   return kept.join('\n');
 }
-
-// HuggingFace / arXiv 等对无 UA 的 HEAD 不友好，统一带一个常见的浏览器 UA，
-// 否则部分 endpoint 会直接超时或 403。
-const REQUEST_HEADERS = {
-  'user-agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) verify-sources/1.0'
-};
 
 async function checkUrl(url) {
   // 第一步：HEAD（带 UA + 超时）

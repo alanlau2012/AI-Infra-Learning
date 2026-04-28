@@ -43,7 +43,61 @@
         "一句话：Decode优化要先确认是否memory-bound，再决定权重复用、batch、MTP或量化是否能带来端到端收益"
       ],
       "real_world_connection": "MTP在特定模型、采样参数和流量画像下可能显著提升并发，因为一次验证可产出多个token；通用容量规划必须以接受率、ITL和tokens/s实测为准",
-      "body_md": "## 核心判断与问题场景\n\n> 推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。\n\n![Compute-bound vs Memory-bound：推理的第一性原理 图解](learning-asset://topic-diagrams/t01-roofline.svg)\n\n线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。\n\n可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。\n\n## 机制、公式与推导\n\nArithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。LLM 推理里，Prefill 的大矩阵乘通常能把算力吃满；Dense decode 常由权重读流量和 KV 读取主导，但有效读字节还取决于 MoE、量化、TP 切分和 kernel fusion。\n\n先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上；若高于拐点，再优先看矩阵核与并行度。\n\n1. FLOPs\n2. Bytes\n3. Arithmetic Intensity\n4. Roofline 判断\n5. 优化方向\n\n判断路径是：估算 FLOPs、估算需要读写的权重和 KV 字节数，再与硬件的峰值算力和 HBM 带宽相除。Roofline 图上的拐点就是硬件“算得快”和“搬得快”的分界。低于拐点时，优先减少搬运、复用权重、增大 batch 或一次产出更多 token。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。\n\n在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次主路径执行的产出。特别是 Decode 阶段，如果瓶颈确实落在 HBM 读流量和调度碎片上，让一次搬运服务更多请求或更多候选 token，才可能改善吞吐。\n\n## 工程诊断、边界与误区\n\n症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。\n\nNVIDIA Tensor Core 与 Ascend Cube 的峰值口径不同，但 Roofline 方法相同：算力、带宽和数据复用决定上限。不要把 GPU 上的优化结论原样迁移到 NPU，先确认瓶颈形态是否一致。\n\n常见误区是只看 TFLOPS，不看带宽和实际 batch。另一个误区是把 Prefill 的结论套到 Decode：Prefill 优化关注矩阵吞吐和排队，Decode 优化更关注权重/KV 复用、调度粒度和尾延迟。\n\n## 专家自检与小结\n\n- 为什么 prefill 和 decode 会落在 Roofline 的不同区域？\n- 如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？\n- 一条 TPOT 告警需要哪些硬件与调度指标才能闭环？\n\n先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。"
+      "sources": [
+        {
+          "id": "roofline-cacm-2009",
+          "title": "Roofline: An Insightful Visual Performance Model for Multicore Architectures",
+          "url": "https://people.eecs.berkeley.edu/~kubitron/cs252/handouts/papers/RooflineVyNoYellow.pdf",
+          "publisher": "Communications of the ACM 52(4) 2009; Williams, Waterman, Patterson (UC Berkeley) — open-access PDF mirror via CS252",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Roofline 模型原始定义：Performance = min(Peak FLOPS, Bandwidth × AI)",
+            "Arithmetic Intensity = FLOPs / Bytes",
+            "拐点（ridge point）= Peak FLOPS / Peak Bandwidth"
+          ]
+        },
+        {
+          "id": "nvidia-h100-product-page",
+          "title": "NVIDIA H100 Tensor Core GPU",
+          "url": "https://www.nvidia.com/en-us/data-center/h100/",
+          "publisher": "NVIDIA",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "H100 SXM5: FP16/BF16 Tensor Core 1,979 TFLOPS（with sparsity，dense=989 TFLOPS）",
+            "H100 SXM5 HBM3 容量 80GB / 带宽 3.35 TB/s",
+            "H100 NVL（PCIe）规格作为对比基准"
+          ]
+        },
+        {
+          "id": "nvidia-hopper-architecture-blog",
+          "title": "NVIDIA Hopper Architecture In-Depth",
+          "url": "https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/",
+          "publisher": "NVIDIA Technical Blog",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "H100 SXM5 dense 口径 preliminary 数字：FP16 Tensor Core ≈ 1000 TFLOPS、HBM3 ≈ 3 TB/s（产品发布后精确为 989 TFLOPS / 3.35 TB/s）",
+            "Hopper Tensor Core 第四代架构与稀疏性支持的工程背景"
+          ]
+        },
+        {
+          "id": "cset-ascend-910b-2024",
+          "title": "Pushing the Limits: Huawei's AI Chip Tests U.S. Export Controls",
+          "url": "https://cset.georgetown.edu/publication/pushing-the-limits-huaweis-ai-chip-tests-u-s-export-controls/",
+          "publisher": "CSET, Georgetown University (2024-06-17)",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Ascend 910B 全变体 FP16 TFLOPS：910B1 ~345-363 / 910B2 363 / 910B3 313 / 910B4 280",
+            "910B1/B2/B3 HBM2e 64GB / 1.6 TB/s（4 stacks × 400 GB/s）",
+            "910B4 HBM2e 32GB / 0.8 TB/s（2 stacks）",
+            "SMIC 7nm (N+2) 制程"
+          ]
+        }
+      ],
+      "body_md": "## 核心判断与问题场景\n\n> 推理优化先不要问“再加几张卡”，先问这一步到底是在等计算，还是在等数据从 HBM 搬过来。\n\n![Compute-bound vs Memory-bound：推理的第一性原理 图解](learning-asset://topic-diagrams/t01-roofline.svg)\n\n线上同一个模型在短 prompt 压测时 tokens/s 很高，一换成长对话和高并发 decode，NPU 利用率看似不低但用户侧 ITL 变差。专家判断不从“卡不够”开始，而是先把 prefill、decode、KV 读取和权重读取分别放到 Roofline 上定位。\n\n可以把 NPU 想成一个很快的厨房，HBM 是仓库到厨房的传送带。Prefill 像一次准备很多份菜，锅和厨师会忙起来；Decode 像每次只做一口，却要反复从仓库把大批食材拿出来，传送带很容易成为瓶颈。\n\n## 机制、公式与推导\n\nArithmetic Intensity 等于一次计算消耗的 FLOPs 除以搬运的字节数。数值高，说明搬一次数据能做很多计算，更接近 compute-bound；数值低，说明算子大部分时间在等数据，更接近 memory-bound。\n\n三行公式把直觉钉死：\n\n```\nPerformance = min(P_peak, BW × AI)\nAI = FLOPs / Bytes\n拐点 AI* = P_peak / BW    // AI < AI* 即 memory-bound\n```\n\n以 **H100 SXM5** 为例，FP16 Tensor Core 在 **dense（无 2:4 稀疏）口径**下 P_peak ≈ 989 TFLOPS、HBM3 BW = 3.35 TB/s，拐点 AI* ≈ 295 FLOPs/Byte——低于这个数的 op 都在等数据搬运，再堆算力没意义。NVIDIA 官方 product page 默认报的是 **with-sparsity 口径 1,979 TFLOPS**（拐点会翻倍到 ~590）；LLM 实际推理通常按 dense 算，因为现成权重很少满足 2:4 结构化稀疏。**Ascend 910B3**（CLAUDE.md 标注为 GTS 实际使用型号；CSET 2024-06 报告口径：FP16 ≈ 313 TFLOPS / HBM2e 1.6 TB/s / 64GB）拐点 AI* ≈ 196 FLOPs/Byte，比 H100 SXM5 dense 拐点低约 1/3——同一个 op 在 910B3 上更容易跨过拐点变 compute-bound，也意味着对带宽敏感 op 的优化空间相对更小。这是后面 T04 硬件分级的关键直觉。\n\nLLM 推理里，Prefill 的大矩阵乘通常能把算力吃满；Dense decode 常由权重读流量和 KV 读取主导，但有效读字节还取决于 MoE、量化、TP 切分和 kernel fusion。\n\n先估算单 token decode 需要读取的权重量级，再估算该步实际产生的 FLOPs。若 FLOPs / Bytes 低于硬件 Roofline 拐点，就把优化优先级放到权重复用、continuous batching、MTP 和量化上；若高于拐点，再优先看矩阵核与并行度。\n\n### 为什么 batching 改变 bound\n\n单 token decode 的 AI 很低（每读 1 字节权重只算约 1 FLOP），所以 batch=1 的 decode 必然落在 Roofline 的 memory-bound 段。但 batch 维度上**同一份权重被 N 个请求共享**——读一次权重做 N 份 matmul——AI 随 batch 近似线性增长。N 足够大时 decode 越过拐点变 compute-bound。\n\n这就是 continuous batching（见 T06）有效的物理基础：不是“调度更聪明”，而是把 decode 的 AI 推过 Roofline 拐点。同理也解释了 P/D 分离（T08）——decode 阶段如果不靠 batch 拉 AI，prefill 那边的算力再强也救不了 ITL。\n\n推论：带宽紧张的硬件（910B 的 1.6 TB/s）batching 收益更大；算力极强的硬件（H100 的 989 TFLOPS / 3.35 TB/s）若 batch 不够大反而难充分利用。这一推论在 T04 硬件选型和 T08 P/D 切分时会反复用到。\n\n1. FLOPs\n2. Bytes\n3. Arithmetic Intensity\n4. Roofline 判断\n5. 优化方向\n\n判断路径是：估算 FLOPs、估算需要读写的权重和 KV 字节数，再与硬件的峰值算力和 HBM 带宽相除。Roofline 图上的拐点就是硬件“算得快”和“搬得快”的分界。低于拐点时，优先减少搬运、复用权重、增大 batch 或一次产出更多 token。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 在 Ascend 910B 上做推理性能分析时，要同时看 AI Core 利用率、HBM 读写、算子耗时和 batch 形态。Decode 阶段如果 HBM 带宽接近瓶颈，继续堆 FP16 峰值算力不会线性改善 TPOT。\n\n在 GTS 的推理服务里，MTP、continuous batching、P/D 分离看起来是不同技术，其实都在提高一次主路径执行的产出。特别是 Decode 阶段，如果瓶颈确实落在 HBM 读流量和调度碎片上，让一次搬运服务更多请求或更多候选 token，才可能改善吞吐。\n\n## 工程诊断、边界与误区\n\n症状：P90 TPOT 抖动但 prefill 时间稳定。观察：decode 轮次 HBM 读带宽高、batch 波动大、AI Core 空泡明显。判断：memory-bound 与调度碎片叠加。动作：提高 batch 稳定性、开启 prefix/cache 复用、评估 MTP。验证：看 ITL 分布和单卡输出 tokens/s 是否同步改善。\n\nNVIDIA Tensor Core 与 Ascend Cube 的峰值口径不同，但 Roofline 方法相同：算力、带宽和数据复用决定上限。不要把 GPU 上的优化结论原样迁移到 NPU，先确认瓶颈形态是否一致。\n\n常见误区是只看 TFLOPS，不看带宽和实际 batch。另一个误区是把 Prefill 的结论套到 Decode：Prefill 优化关注矩阵吞吐和排队，Decode 优化更关注权重/KV 复用、调度粒度和尾延迟。\n\n## 专家自检与小结\n\n- 为什么 prefill 和 decode 会落在 Roofline 的不同区域？\n- 如果 MTP 接受率下降，memory-bound decode 的收益会如何变化？\n- 一条 TPOT 告警需要哪些硬件与调度指标才能闭环？\n\n先用 compute-bound 与 memory-bound 定性，再用 Arithmetic Intensity 定量，最后把优化动作映射到“少搬、复用、多产出”。这是后面所有容量、调度和架构判断的底层坐标系。"
     },
     {
       "id": "T02",
@@ -64,7 +118,7 @@
         "长上下文场景KV Cache近似随seq_len线性增长，seq_len从4K到32K时KV约增长8倍"
       ],
       "real_world_connection": "评估 MiniMax-M2 系列、Qwen 等模型族在 910B3/B4 上的并发时，需要把权重、KV、block 碎片和运行时预留放到同一张单卡预算表里；具体版本以官方模型卡为准。",
-      "body_md": "## 核心判断与问题场景\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制、公式与推导\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n例如内部评估 MiniMax-M2 系列、Qwen 等模型族在 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程诊断、边界与误区\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检与小结\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。",
+      "body_md": "## 核心判断与问题场景\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\nKV Cache 的本质不是“记笔记”——上下文已经在 token 序列里，模型本来就看得到。它真正要解决的是“不重算”：如果不缓存，每生成 1 个 token 就要把整个上文的 attention 全部重做一次（每步 O(n²)），随着对话变长完全无法承受。缓存 K/V 之后，新 token 只需对历史 K/V 做一次点积，每步降到 O(n)。换言之，**KV Cache 是 prefill 阶段计算结果的复用机制，不是上下文存储机制**。\n\n副作用是 cache 必须按层、按头、按 token 累积，所以用户越多、上下文越长，HBM 占用越大——这就是下面要算的那笔显存账的根因。\n\n## 机制、公式与推导\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n例如内部评估 MiniMax-M2 系列、Qwen 等模型族在 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程诊断、边界与误区\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检与小结\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。",
       "sources": [
         {
           "id": "minimax-hf-org",
@@ -435,6 +489,36 @@
         "生产策略必须区分“能启动”“能压测通过”和“能在 SLA 下长期服务”"
       ],
       "real_world_connection": "640卡集群全是910B3(64GB)，64卡最小集群单元基于部署密度、调度效率、运维复杂度的综合考量",
+      "sources": [
+        {
+          "id": "cset-ascend-910b-2024",
+          "title": "Pushing the Limits: Huawei's AI Chip Tests U.S. Export Controls",
+          "url": "https://cset.georgetown.edu/publication/pushing-the-limits-huaweis-ai-chip-tests-u-s-export-controls/",
+          "publisher": "CSET, Georgetown University (2024-06-17)",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "910B1 ~345-363 TFLOPS FP16, 24-25 cores @ 1.8GHz",
+            "910B2 363 TFLOPS FP16, 25 cores @ 1.8GHz",
+            "910B3 313 TFLOPS FP16, 20 cores @ 1.8GHz, 64GB HBM2e / 1.6 TB/s",
+            "910B4 280 TFLOPS FP16, 20 cores @ 1.65GHz, 32GB HBM2e / 0.8 TB/s（仅 2 HBM stacks）",
+            "SMIC 7nm (N+2) 制程",
+            "910B 系列 HBM2e 单 stack 400 GB/s"
+          ]
+        },
+        {
+          "id": "nvidia-h100-product-page",
+          "title": "NVIDIA H100 Tensor Core GPU（用作硬件对比基准）",
+          "url": "https://www.nvidia.com/en-us/data-center/h100/",
+          "publisher": "NVIDIA",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "H100 SXM5 FP16/BF16 Tensor Core 1,979 TFLOPS (with sparsity)，HBM3 80GB / 3.35 TB/s",
+            "H100 NVL FP16/BF16 1,671 TFLOPS (with sparsity)，HBM3 94GB / 3.9 TB/s"
+          ]
+        }
+      ],
       "body_md": "## 核心判断与问题场景\n\n> 硬件分级不是贴标签，而是把模型的显存、带宽和延迟画像放到合适的卡上。\n\n![Ascend 910B系列硬件规格与分级策略 图解](learning-asset://topic-diagrams/t04-ascend-910b-tiering.svg)\n\n同一个模型要在 910B3 和 910B4 之间做资源池分层：B3 给长上下文和高价值业务，B4 承接中小模型、实验和成本敏感流量。判断依据必须来自容量、带宽、互联和 SLA，而不是型号偏好。\n\n同一辆车跑城市路和高速路表现不同，同一个模型放到不同 NPU 上也会出现不同瓶颈。910B3 与 910B4 的关键差异不只是型号，而是可承载的权重、KV Cache 和并发空间。\n\n## 机制、公式与推导\n\n评估 Ascend 910B 系列时，应分开看 HBM 容量、HBM 带宽、矩阵计算能力、互联和软件栈成熟度。大模型首先受容量约束，其次受 decode 带宽约束；中小模型则更容易被调度开销、batch 策略和多租户干扰影响。\n\n硬件匹配顺序是：权重能否放下，KV 在目标上下文和并发下是否够用，prefill/decode 分别受算力还是带宽限制，多卡扩展后通信是否可控。任何一步失败，都要换模型、换精度、换卡型或换部署拓扑。\n\n1. HBM 容量\n2. 带宽\n3. AI Core\n4. 模型规格\n5. 硬件分级\n\n硬件匹配可以按四步走：权重能否放下，目标上下文下 KV 是否够用，prefill/decode 的瓶颈分别是什么，扩到多卡后通信是否可控。只有四步都通过，才算模型与硬件匹配。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 公开资料中 910B 系列规格会随整机形态和软件版本呈现差异；工程侧应以内部验收与 CANN 实测为准。可稳定使用的 HBM、实际 kernel 吞吐、HCCS/HCCL 通信和故障域比宣传峰值更重要。\n\n在 GTS 集群规划里，B3 更适合作为大模型和长上下文主力，B4 可承接中小模型、低成本实验或轻量服务。真实策略还要结合机柜密度、故障域、运维复杂度和业务优先级。\n\n## 工程诊断、边界与误区\n\n症状：模型在 B4 上能启动但压测很快 OOM 或排队。观察：权重占用后剩余 KV 空间不足，长请求触发 block exhaustion。判断：“能启动”不等于“能生产”。动作：迁入 B3、压缩上下文、量化或降低并发。验证：看峰值水位和故障迁移余量。\n\nA100/H100 的 SM/Tensor Core 经验不能直接等价到 Ascend Cube/Vector/Scalar。对比硬件时要看端到端服务指标、软件栈成熟度和业务成本，而不是单一 TFLOPS。\n\n常见误区是按单卡峰值算力排序，而不是按业务瓶颈排序。另一个误区是把“能启动”当作“能生产服务”：生产还要留出 KV、峰值流量、热升级和故障迁移空间。\n\n## 专家自检与小结\n\n- 为什么 B3/B4 分级首先是显存和 KV 策略问题？\n- 生产部署为什么必须保留热升级、故障迁移和流量峰值余量？\n- 硬件宣传峰值和服务可用性能之间通常差在哪些环节？\n\n硬件分级的本质是容量、带宽、计算和运维的共同约束。模型进入资源池前，先做显存账和瓶颈账，能减少后续大量试错。"
     },
     {
@@ -456,7 +540,7 @@
         "管理者视角：理解算子优化ROI——哪些算子在Attention/FFN/量化/采样主路径上、优化空间有多大"
       ],
       "real_world_connection": "GTS高性能算子是相对于其他使用同款硬件团队的差异化竞争力",
-      "body_md": "## 核心判断与问题场景\n\n> 自研算子的价值，来自把通用实现改成贴着昇腾数据搬运和计算流水线走。\n\n![昇腾NPU架构与自研算子的价值 图解](learning-asset://topic-diagrams/t05-cann-npu-stack.svg)\n\nvLLM Ascend 能跑通后，端到端 TPOT 仍不达标。专家不会马上重写全框架，而是用 profiling 找出每 token 每层重复出现的 attention、FFN、量化和采样热点。\n\n高级框架像自动挡汽车，能跑但不一定用尽赛道。自研算子像针对赛道调校变速箱和刹车点：目标不是炫技，而是少搬一次数据、少落一次内存、让 Cube/Vector 单元更连续地工作。\n\n## 机制、公式与推导\n\nCANN 不是单一路径流水线。应用/框架可能走图执行或 eager 路径，经由 ACL/Runtime 调用底层能力；算子实现则可能来自内置算子、TBE、Ascend C 或自定义 kernel。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。\n\n算子 ROI = 热点占比 × 可优化空间 × 调用频率。一个 5% 的单算子提升如果处在每层每 token 主路径，端到端可能可见；一个冷路径 kernel 即便 micro benchmark 翻倍，也可能没有服务收益。\n\n1. 应用框架\n2. GE\n3. TBE/Ascend C\n4. Runtime\n5. AI Core\n6. GM/UB\n\n算子 ROI 可以用三问判断：它是否处在火焰图热点；瓶颈是搬运、计算还是同步；替换后是否减少全局内存读写或 kernel launch。只有命中主路径的优化，才会在服务指标上可见。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> CANN/Ascend C 优化的关键是 GM、UB、L1/L0、Cube、Vector 和同步之间的流水线。高价值算子通常要重做 tiling、double buffer、fusion 和数据布局，减少 GM 往返。\n\nGTS 自研高性能算子相当于把通用 vLLM/框架适配到 910B 的实际特性。对于 Decode 阶段，哪怕单个算子提升不大，只要它在每 token 每层反复出现，累计收益就会非常可观。\n\n## 工程诊断、边界与误区\n\n症状：AI Core 利用率波动、kernel 间空隙多。观察：attention 后处理多次落 GM，Vector 与 Cube 衔接差。判断：数据搬运和 kernel launch 过多。动作：融合后处理、调整 tiling、启用 double buffer。验证：看端到端 TPOT 而不只看单算子耗时。\n\n自研算子不是越多越好。上游 vLLM/CANN 已优化的路径应优先复用，只有在生产主路径、模型覆盖面和维护成本都成立时才定制。\n\n常见误区是追求单算子 micro benchmark 好看，却没有端到端收益。另一个误区是过早自研所有算子；更稳妥的路径是先用 profiling 找热点，再针对 attention、FFN 和通信边界做少量高价值替换。\n\n## 专家自检与小结\n\n- 为什么 GM 到 UB 的搬运次数会决定算子收益？\n- 如何判断一个自研算子是否值得长期维护？\n- 单算子 benchmark 和服务 TPOT 为什么可能背离？\n\n自研算子是把模型结构、框架调度和 NPU 存储层级对齐的工程能力。它的价值应以端到端延迟、吞吐和稳定性来衡量。"
+      "body_md": "## 核心判断与问题场景\n\n> 自研算子的价值，来自把通用实现改成贴着昇腾数据搬运和计算流水线走。\n\n![昇腾NPU架构与自研算子的价值 图解](learning-asset://topic-diagrams/t05-cann-npu-stack.svg)\n\nvLLM Ascend 能跑通后，端到端 TPOT 仍不达标。专家不会马上重写全框架，而是用 profiling 找出每 token 每层重复出现的 attention、FFN、量化和采样热点。\n\n高级框架像自动挡汽车，能跑但不一定用尽赛道。自研算子像针对赛道调校变速箱和刹车点：目标不是炫技，而是少搬一次数据、少落一次内存、让 Cube/Vector 单元更连续地工作。\n\n## 机制、公式与推导\n\nCANN 不是单一路径流水线。应用/框架可能走图执行或 eager 路径，经由 ACL/Runtime 调用底层能力；算子实现则可能来自内置算子、TBE、Ascend C 或自定义 kernel。算子优化通常围绕 tiling、double buffer、数据从 GM 到 UB 的搬运、Cube 矩阵计算和 Vector 后处理。Attention、FFN、量化/反量化、采样等热点算子，都会影响端到端吞吐。\n\n算子 ROI = 热点占比 × 可优化空间 × 调用频率。一个个位百分点级的单算子提升如果处在每层每 token 主路径，端到端可能可见；一个冷路径 kernel 即便 micro benchmark 翻倍，也可能没有服务收益。\n\n1. 应用框架\n2. GE\n3. TBE/Ascend C\n4. Runtime\n5. AI Core\n6. GM/UB\n\n算子 ROI 可以用三问判断：它是否处在火焰图热点；瓶颈是搬运、计算还是同步；替换后是否减少全局内存读写或 kernel launch。只有命中主路径的优化，才会在服务指标上可见。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> CANN/Ascend C 优化的关键是 GM、UB、L1/L0、Cube、Vector 和同步之间的流水线。高价值算子通常要重做 tiling、double buffer、fusion 和数据布局，减少 GM 往返。\n\nGTS 自研高性能算子相当于把通用 vLLM/框架适配到 910B 的实际特性。对于 Decode 阶段，哪怕单个算子提升不大，只要它在每 token 每层反复出现，累计收益就会非常可观。\n\n## 工程诊断、边界与误区\n\n症状：AI Core 利用率波动、kernel 间空隙多。观察：attention 后处理多次落 GM，Vector 与 Cube 衔接差。判断：数据搬运和 kernel launch 过多。动作：融合后处理、调整 tiling、启用 double buffer。验证：看端到端 TPOT 而不只看单算子耗时。\n\n自研算子不是越多越好。上游 vLLM/CANN 已优化的路径应优先复用，只有在生产主路径、模型覆盖面和维护成本都成立时才定制。\n\n常见误区是追求单算子 micro benchmark 好看，却没有端到端收益。另一个误区是过早自研所有算子；更稳妥的路径是先用 profiling 找热点，再针对 attention、FFN 和通信边界做少量高价值替换。\n\n## 专家自检与小结\n\n- 为什么 GM 到 UB 的搬运次数会决定算子收益？\n- 如何判断一个自研算子是否值得长期维护？\n- 单算子 benchmark 和服务 TPOT 为什么可能背离？\n\n自研算子是把模型结构、框架调度和 NPU 存储层级对齐的工程能力。它的价值应以端到端延迟、吞吐和稳定性来衡量。"
     },
     {
       "id": "T06",
@@ -478,7 +562,36 @@
         "调度器(Scheduler)：管理请求队列、KV Cache分配、抢占策略，是vLLM的大脑"
       ],
       "real_world_connection": "1300并发用户的MaaS服务底层靠vLLM的PagedAttention管KV Cache + Continuous Batching提NPU利用率",
-      "body_md": "## 核心判断与问题场景\n\n> vLLM 的关键不是“更快地算一个请求”，而是“更聪明地把很多请求塞进同一台推理机器”。\n\n![vLLM核心机制 图解](learning-asset://topic-diagrams/t06-vllm-pagedattention.svg)\n\n同一台推理实例同时服务短问答、长 prompt 和流式代码生成。没有 PagedAttention 和 continuous batching，KV 碎片和长请求阻塞会迅速吃掉吞吐。\n\n如果把 KV Cache 当成连续大数组，每个请求长度不同，就像停车场只能停固定长度的大车，空间会碎掉。PagedAttention 借鉴操作系统分页，把 KV 切成 block，请求只拿自己需要的页，调度器再持续把新请求插进来。\n\n## 机制、公式与推导\n\nPagedAttention 用 block table 做逻辑位置到物理 KV block 的映射，减少预留和碎片。Continuous batching 让完成的请求释放资源，新请求随时进入 batch。Prefix caching 复用相同前缀的 KV，chunked prefill 把长 prompt 切块，避免长 prefill 阻塞 decode。\n\n把系统拆成 KV 分配、调度选择、执行 kernel 三层。吞吐提升来自减少碎片、提高 batch 稳定性和复用前缀；延迟风险来自长 prefill、抢占和 batch 过大。\n\n1. Requests\n2. Scheduler\n3. Block Table\n4. Paged KV Cache\n5. Continuous Batching\n\n可以把 vLLM 理解成三层：内存层管理 KV block，调度层决定每轮执行哪些 prefill/decode，执行层调用 attention、FFN、采样等 kernel。吞吐提升往往来自三层协同，而不是某一个 kernel 独立变快。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 在 Ascend 后端，PagedAttention 的 block size、KV layout、attention kernel 和调度器需要与 CANN 算子能力对齐。KV 管理策略如果不适配 NPU 内存访问形态，会把理论调度收益变成带宽浪费。\n\nGTS MaaS 服务面对的是大量长度不同、到达时间不同、SLA 不同的请求。vLLM 的价值在于提高 NPU 利用率，同时控制 TTFT、ITL 和尾延迟。后续 Ascend 定制也应围绕这些机制判断是否破坏调度收益。\n\n## 工程诊断、边界与误区\n\n症状：平均吞吐提高但 P99 TTFT 变差。观察：长 prefill 占用调度轮次，decode 请求等待。判断：chunked prefill 或优先级策略不足。动作：启用分块 prefill、限制长请求并发、分层队列。验证：按输入长度切分 TTFT。\n\nvLLM 是资源调度基座，不是所有后端都天然同等高效。CUDA 后端成熟路径迁移到 Ascend 时，要逐项验证 KV、attention、采样和通信。\n\n常见误区是把 batch size 设大就等同于高吞吐。没有连续调度和 KV 管理，大 batch 会拉高尾延迟。另一个误区是只看平均 token/s，不看请求级 TTFT/ITL 分布。\n\n## 专家自检与小结\n\n- PagedAttention 如何减少 KV 内存浪费？\n- continuous batching 为什么可能同时提升吞吐并影响尾延迟？\n- prefix caching 在企业知识库问答中有什么收益和风险？\n\nvLLM 是推理服务的资源操作系统：管 KV、排请求、复用前缀、平衡 prefill 与 decode。理解它，才能理解平台吞吐从哪里来。"
+      "sources": [
+        {
+          "id": "vllm-pagedattention-sosp23",
+          "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+          "url": "https://arxiv.org/abs/2309.06180",
+          "publisher": "SOSP 2023; Kwon, Li, Zhuang, Sheng, Zheng, Yu, Gonzalez, Zhang, Stoica (UC Berkeley Sky Computing Lab)",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "PagedAttention 受 OS 虚拟内存分页启发的 block 化 KV Cache 设计",
+            "near-zero KV cache 浪费的显存利用率论断",
+            "flexible sharing of KV cache within and across requests（即 prefix sharing 的论文级支撑）",
+            "相比 FasterTransformer / Orca 的 2-4× 吞吐提升数字"
+          ]
+        },
+        {
+          "id": "vllm-github-repo",
+          "title": "vllm-project/vllm （官方仓库）",
+          "url": "https://github.com/vllm-project/vllm",
+          "publisher": "vLLM Project / UC Berkeley Sky Computing Lab",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "PagedAttention 作为核心特性",
+            "Continuous batching of incoming requests, chunked prefill, prefix caching 等核心调度能力",
+            "项目维护现状（2000+ contributors）"
+          ]
+        }
+      ],
+      "body_md": "## 核心判断与问题场景\n\n> vLLM 的关键不是“更快地算一个请求”，而是“更聪明地把很多请求塞进同一台推理机器”。\n\n![vLLM核心机制 图解](learning-asset://topic-diagrams/t06-vllm-pagedattention.svg)\n\n同一台推理实例同时服务短问答、长 prompt 和流式代码生成。没有 PagedAttention 和 continuous batching，KV 碎片和长请求阻塞会迅速吃掉吞吐。\n\n如果把 KV Cache 当成连续大数组，每个请求长度不同，就像停车场只能停固定长度的大车，空间会碎掉。PagedAttention 借鉴操作系统分页，把 KV 切成 block，请求只拿自己需要的页，调度器再持续把新请求插进来。\n\n## 机制、公式与推导\n\nPagedAttention 用 block table 做逻辑位置到物理 KV block 的映射，减少预留和碎片。Continuous batching 让完成的请求释放资源，新请求随时进入 batch。Prefix caching 复用相同前缀的 KV，chunked prefill 把长 prompt 切块，避免长 prefill 阻塞 decode。\n\n### PagedAttention 的两个收益（权重不同）\n\n大多数中文资料只讲第一个，但 vLLM 在生产 LLM 服务里的真正杠杆是第二个：\n\n1. **避免内部碎片**：变长序列共用 block pool，KV 显存利用率从“按最大 seq_len 预留”提升到“按实际用量分配”，单卡承载并发通常提升 2–4×。论文 abstract 反复强调的就是这部分。\n2. **prefix sharing（更重要）**：N 个用户共用同一个长 system prompt 时，prefix 对应的 KV block 通过引用计数只存一份。N 增大、system prompt 越长，省得越多——多租户 chatbot / RAG / agent 场景下常见 5–20× 显存收益，省下的显存可以直接换成更高的并发上限。\n\n快速判断哪个收益占主导：业务的 system prompt（或检索拼接片段）平均长度 ÷ 用户独占内容平均长度。比值越大 prefix sharing 杠杆越大；比值接近 0（短 prompt 长生成）时主要靠 (1)。\n\n继续往 Continuous batching 看：它的物理基础是 T01 提到的“batch 把 decode 的 AI 推过 Roofline 拐点”——不是“调度更聪明”，而是同一份权重读一次给 N 个请求复用，让 decode 越过 memory-bound 段。所以 PagedAttention（解决空间碎片）和 continuous batching（解决时间碎片 + 拉 AI）是两条互补的优化路径，少了任何一条都不够。\n\n把系统拆成 KV 分配、调度选择、执行 kernel 三层。吞吐提升来自减少碎片、提高 batch 稳定性和复用前缀；延迟风险来自长 prefill、抢占和 batch 过大。\n\n1. Requests\n2. Scheduler\n3. Block Table\n4. Paged KV Cache\n5. Continuous Batching\n\n可以把 vLLM 理解成三层：内存层管理 KV block，调度层决定每轮执行哪些 prefill/decode，执行层调用 attention、FFN、采样等 kernel。吞吐提升往往来自三层协同，而不是某一个 kernel 独立变快。\n\n## 昇腾/GTS 落地\n\n> [!ASCEND]\n> 在 Ascend 后端，PagedAttention 的 block size、KV layout、attention kernel 和调度器需要与 CANN 算子能力对齐。KV 管理策略如果不适配 NPU 内存访问形态，会把理论调度收益变成带宽浪费。\n\nGTS MaaS 服务面对的是大量长度不同、到达时间不同、SLA 不同的请求。vLLM 的价值在于提高 NPU 利用率，同时控制 TTFT、ITL 和尾延迟。后续 Ascend 定制也应围绕这些机制判断是否破坏调度收益。\n\n## 工程诊断、边界与误区\n\n症状：平均吞吐提高但 P99 TTFT 变差。观察：长 prefill 占用调度轮次，decode 请求等待。判断：chunked prefill 或优先级策略不足。动作：启用分块 prefill、限制长请求并发、分层队列。验证：按输入长度切分 TTFT。\n\nvLLM 是资源调度基座，不是所有后端都天然同等高效。CUDA 后端成熟路径迁移到 Ascend 时，要逐项验证 KV、attention、采样和通信。\n\n常见误区是把 batch size 设大就等同于高吞吐。没有连续调度和 KV 管理，大 batch 会拉高尾延迟。另一个误区是只看平均 token/s，不看请求级 TTFT/ITL 分布。\n\n## 专家自检与小结\n\n- PagedAttention 如何减少 KV 内存浪费？\n- continuous batching 为什么可能同时提升吞吐并影响尾延迟？\n- prefix caching 在企业知识库问答中有什么收益和风险？\n\nvLLM 是推理服务的资源操作系统：管 KV、排请求、复用前缀、平衡 prefill 与 decode。理解它，才能理解平台吞吐从哪里来。"
     },
     {
       "id": "T07",

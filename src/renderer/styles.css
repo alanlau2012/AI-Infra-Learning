@@ -496,23 +496,24 @@ a:focus-visible {
 
 .insight-panel {
   min-width: 0;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.035);
 }
 
 .insight-panel h4 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: var(--teal);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .insight-panel p,
 .insight-panel li {
   color: var(--soft);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.72;
 }
 
 .insight-panel p,

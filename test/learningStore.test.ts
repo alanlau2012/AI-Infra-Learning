@@ -163,6 +163,32 @@ describe('learning store', () => {
     }
   });
 
+  it('documents the T03 Qwen MoE example with verified sources', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const t03 = store.getTopic('T03');
+    const combinedText = [t03.name, t03.realWorldConnection, ...t03.keyPoints, t03.bodyMd].join('\n');
+
+    expect(fs.existsSync(path.join(process.cwd(), 'resources', 'source-snapshots', 'T03.md'))).toBe(true);
+    expect(combinedText).not.toContain('Qwen3.5-35B-A3B');
+    expect(combinedText).toContain('Qwen3-30B-A3B');
+    expect(t03.sources.some((source) => source.id === 'qwen3-tech-report')).toBe(true);
+    expect(t03.bodyMd).toContain('[!FACT]');
+  });
+
+  it('documents the T16 lifecycle example with verified Qwen sources and an assumed MiniMax note', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+
+    const t16 = store.getTopic('T16');
+    const combinedText = [t16.name, t16.realWorldConnection, ...t16.keyPoints, t16.bodyMd].join('\n');
+
+    expect(fs.existsSync(path.join(process.cwd(), 'resources', 'source-snapshots', 'T16.md'))).toBe(true);
+    expect(combinedText).not.toContain('Qwen3.6-27B');
+    expect(combinedText).toContain('Qwen3-Next-80B-A3B');
+    expect(t16.sources.some((source) => source.id === 'qwen3-next-80b-card')).toBe(true);
+    expect(t16.bodyMd).toMatch(/> \[!ASSUMPTION\][\s\S]*MiniMax/);
+  });
+
   it('returns an empty sources array for topics without an explicit sources field', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 

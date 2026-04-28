@@ -153,7 +153,7 @@ function scanModelMentions(topic, knownModels) {
     { name: 'why', value: topic.why ?? '' },
     { name: 'real_world_connection', value: topic.real_world_connection ?? '' },
     { name: 'key_points', value: (topic.key_points ?? []).join('\n') },
-    { name: 'body_md', value: topic.body_md ?? '' }
+    { name: 'body_md', value: stripAssumptionCallouts(topic.body_md ?? '') }
   ];
 
   const hits = new Map();
@@ -173,6 +173,29 @@ function scanModelMentions(topic, knownModels) {
   }
 
   return [...hits.values()].map((e) => ({ ...e, locations: [...e.locations] }));
+}
+
+function stripAssumptionCallouts(markdown) {
+  const kept = [];
+  let skipping = false;
+
+  for (const line of markdown.split(/\r?\n/)) {
+    if (/^>\s*\[!ASSUMPTION\]/.test(line)) {
+      skipping = true;
+      continue;
+    }
+
+    if (skipping) {
+      if (line.startsWith('>')) {
+        continue;
+      }
+      skipping = false;
+    }
+
+    kept.push(line);
+  }
+
+  return kept.join('\n');
 }
 
 // HuggingFace / arXiv 等对无 UA 的 HEAD 不友好，统一带一个常见的浏览器 UA，

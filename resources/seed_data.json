@@ -131,10 +131,49 @@
         "线性注意力本质：用O(n)复杂度或固定状态替代完整softmax历史，新token更新状态而不是完整回看",
         "线性注意力的代价：表达能力通常弱于softmax attention，精确检索和远距离依赖捕捉能力需要验证",
         "趋势判断：混合架构常用线性/压缩attention省资源，少数full attention或检索机制保精度",
-        "多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax M2.5更接近MoE + Lightning Attention/混合注意力路线"
+        "多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax-M1 使用 MoE + Lightning Attention/混合注意力；MiniMax-M2 系列官方说明 M2 回到 full attention"
       ],
-      "real_world_connection": "不同attention机制的模型落到集群上KV Cache占用完全不同，同样显存预算下GQA模型与Gated DeltaNet模型的并发能力可能差3-5倍",
-      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度可以按两条线看：softmax attention 需要随序列增长维护 KV，prefill 还会出现 O(n²) 的注意力矩阵；线性注意力倾向 O(n) 流式更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、Lightning Attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。"
+      "real_world_connection": "不同 attention 机制的模型落到集群上，KV Cache 或状态占用画像不同；同样显存预算下 GQA、Gated DeltaNet、Lightning Attention 或 full attention 的并发能力必须按模型卡与本地压测确认。",
+      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n> [!FACT]\n> 来源：MiniMax-M1 官方模型卡与 MiniMax-M2 full attention 技术博客。MiniMax-M1 公开描述为 MoE + Lightning Attention；MiniMax-M2 官方博客则解释 M2 为什么回到 full attention。因此，写作时不能把 M 系列统一归为 Lightning/混合注意力路线。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度要分 prefill 和 decode 两条线看：prefill 阶段通常要计算随序列长度二次增长的注意力关系；decode 单步不再重算完整 n² 矩阵，但会读取随历史长度线性增长的 KV。线性注意力倾向 O(n) 流式更新或固定状态更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、MiniMax-M1 的 Lightning Attention、MiniMax-M2 的 full attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。",
+      "sources": [
+        {
+          "id": "minimax-m1-card",
+          "title": "MiniMax-M1-80k-hf Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M1-80k-hf",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax-M1 官方模型名和 40K / 80K thinking budget 版本",
+            "M1 使用 MoE + Lightning Attention",
+            "1M context"
+          ]
+        },
+        {
+          "id": "minimax-m2-full-attention-blog",
+          "title": "Why Did MiniMax M2 End Up as a Full Attention Model?",
+          "url": "https://huggingface.co/blog/MiniMax-AI/why-did-m2-end-up-as-a-full-attention-model",
+          "publisher": "MiniMax / Hugging Face Blog",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax 官方解释 M2 采用 full attention 的工程权衡",
+            "用于约束 T19：不要把 MiniMax-M2 系列一概写成 Lightning Attention 或混合注意力"
+          ]
+        },
+        {
+          "id": "minimax-m2-card",
+          "title": "MiniMax-M2 Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M2",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "官方模型 ID 为 MiniMax-M2",
+            "官方描述为约 230B total parameters / 10B active parameters 的 MoE 模型"
+          ]
+        }
+      ]
     },
     {
       "id": "T20",

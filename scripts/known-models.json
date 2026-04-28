@@ -69,6 +69,26 @@
       "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2-Exp"
     },
     {
+      "name": "DeepSeek-V4-Pro",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro"
+    },
+    {
+      "name": "DeepSeek-V4-Pro-Base",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro-Base"
+    },
+    {
+      "name": "DeepSeek-V4-Flash",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash"
+    },
+    {
+      "name": "DeepSeek-V4-Flash-Base",
+      "publisher": "DeepSeek",
+      "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Base"
+    },
+    {
       "name": "Mixtral-8x7B",
       "publisher": "Mistral AI",
       "official_url": "https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1"
@@ -101,6 +121,6 @@
   ],
   "notes": [
     "Qwen3.5-* / Qwen3.6-* 截至 2026-04-28 在 HuggingFace 上未找到对应官方模型卡 URL。Qwen3.5 的 model_type 为 qwen3_5（继承 Qwen3-Next 架构），但 Qwen/Qwen3.5-* 仓库未公开发布。",
-    "DeepSeek-V4-* 系列（含 V4-Pro / V4-Flash）截至本次校验未在官方频道公开发布，相关具体规格（CSA 4x、HCA 128x、KV 2% 等）应作为示例假设处理。"
+    "DeepSeek-V4 系列（V4-Pro / V4-Pro-Base / V4-Flash / V4-Flash-Base）于 2026-04-24 通过 DeepSeek API 与 HuggingFace 同步 preview release，所有四个变体均有官方模型卡支撑。CSA 4×、HCA 128×、Lightning Indexer FP4、KV vs V3.2 = 10% / 7% 等数字均有 HuggingFace 官方博客与模型卡背书；Lightning Indexer top-k 与 sliding window 长度官方仍未公开，需按 [!ASSUMPTION] 处理。"
   ]
 }

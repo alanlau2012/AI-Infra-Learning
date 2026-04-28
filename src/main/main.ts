@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from 'electron';
-import type { SeedData, StudyStatus } from '../shared/types';
+import type { SeedData, SeedReloadEvent, StudyStatus } from '../shared/types';
 import { createLearningStore, type LearningStore } from './learningStore';
 import { getProgressPath, getSeedDataPath, getTopicDiagramPath } from './paths';
 import {
@@ -17,9 +17,12 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 /** 若 ready-to-show 因 GPU/渲染异常未触发，5 s 后强制显示窗口 */
 const SHOW_WINDOW_FALLBACK_MS = 5_000;
+const SEED_RELOAD_DEBOUNCE_MS = 200;
 
 let mainWindow: BrowserWindow | null = null;
 let learningStore: LearningStore | null = null;
+let seedWatcher: fs.FSWatcher | null = null;
+let seedReloadTimer: NodeJS.Timeout | null = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -63,6 +66,9 @@ if (!gotSingleInstanceLock) {
         }
         return learningStore;
       });
+      if (isDevelopment) {
+        installSeedHotReload();
+      }
       createWindow();
 
       app.on('activate', () => {
@@ -87,6 +93,12 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('before-quit', () => {
+    seedWatcher?.close();
+    seedWatcher = null;
+    if (seedReloadTimer) {
+      clearTimeout(seedReloadTimer);
+      seedReloadTimer = null;
+    }
     learningStore = null;
   });
 }
@@ -241,6 +253,37 @@ function openLearningStore() {
     seedData,
     progressPath: getProgressPath()
   });
+}
+
+function installSeedHotReload() {
+  const seedPath = getSeedDataPath();
+  seedWatcher?.close();
+  seedWatcher = fs.watch(seedPath, () => {
+    if (seedReloadTimer) {
+      clearTimeout(seedReloadTimer);
+    }
+    seedReloadTimer = setTimeout(() => {
+      seedReloadTimer = null;
+      reloadSeedData();
+    }, SEED_RELOAD_DEBOUNCE_MS);
+  });
+}
+
+function reloadSeedData() {
+  try {
+    learningStore = openLearningStore();
+    notifySeedReload({ ok: true, reloadedAt: Date.now() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Failed to hot reload seed data:', message);
+    notifySeedReload({ ok: false, reloadedAt: Date.now(), error: message });
+  }
+}
+
+function notifySeedReload(payload: SeedReloadEvent) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('learning:seedReloaded', payload);
+  }
 }
 
 function registerIpcHandlers(getStore: () => LearningStore) {

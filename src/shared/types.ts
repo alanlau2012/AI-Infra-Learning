@@ -107,3 +107,9 @@ export interface ProgressSummary {
     completedTopics: number;
   }>;
 }
+
+export interface SeedReloadEvent {
+  ok: boolean;
+  reloadedAt: number;
+  error?: string;
+}

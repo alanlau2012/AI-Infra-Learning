@@ -135,12 +135,21 @@ describe('learning store', () => {
 
   it('ships expanded markdown content and a bundled diagram for every topic', () => {
     const diagramPattern = /!\[[^\]]+\]\(learning-asset:\/\/topic-diagrams\/([a-z0-9-]+\.svg)\)/;
+    const expectedHeadings = [
+      '## 核心判断与问题场景',
+      '## 机制、公式与推导',
+      '## 昇腾/GTS 落地',
+      '## 工程诊断、边界与误区',
+      '## 专家自检与小结'
+    ];
 
     for (const topic of seedData.topics) {
       expect(topic.body_md?.trim(), topic.id).toBeTruthy();
       expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
-      expect(topic.body_md, topic.id).toContain('## 一句话抓手');
-      expect(topic.body_md, topic.id).toContain('## 放到 GTS 场景');
+      expect(topic.body_md?.match(/^##\s+/gm), topic.id).toHaveLength(5);
+      for (const heading of expectedHeadings) {
+        expect(topic.body_md, topic.id).toContain(heading);
+      }
       const match = topic.body_md?.match(diagramPattern);
       expect(match?.[1], topic.id).toBeTruthy();
       expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);

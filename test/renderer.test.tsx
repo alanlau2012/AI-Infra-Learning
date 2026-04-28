@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /// <reference types="vitest" />
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/renderer/App';
-import type { ProgressSummary, StageWithTopics, TopicDetail } from '../src/shared/types';
+import type { ProgressSummary, SeedReloadEvent, StageWithTopics, TopicDetail } from '../src/shared/types';
 
 const outline: StageWithTopics[] = [
   {
@@ -98,7 +98,10 @@ const t02Topic: TopicDetail = {
   sources: []
 };
 
+let seedReloadCallback: ((event: SeedReloadEvent) => void) | null = null;
+
 beforeEach(() => {
+  seedReloadCallback = null;
   window.learning = {
     getOutline: vi.fn().mockResolvedValue(outline),
     getProgress: vi.fn().mockResolvedValue(progress),
@@ -109,7 +112,11 @@ beforeEach(() => {
       edges: [{ from: 'T01', to: 'T02' }],
       mainTrack: ['T01', 'T02']
     }),
-    updateTopicStatus: vi.fn().mockResolvedValue({ ...topic, status: 'completed' })
+    updateTopicStatus: vi.fn().mockResolvedValue({ ...topic, status: 'completed' }),
+    onSeedReloaded: vi.fn().mockImplementation((callback: (event: SeedReloadEvent) => void) => {
+      seedReloadCallback = callback;
+      return vi.fn();
+    })
   };
 });
 
@@ -131,6 +138,26 @@ describe('App', () => {
     const toc = screen.getByRole('region', { name: '本节目录' });
     expect(within(toc).getByRole('link', { name: '核心判断' })).toHaveAttribute('href', '#section-1-核心判断');
     expect(screen.getByRole('region', { name: '学习检查点' })).toBeInTheDocument();
+  });
+
+  it('reloads the current topic when the development seed file changes', async () => {
+    const reloadedTopic = {
+      ...topic,
+      bodyMd: '## 核心判断\n\n热重载后的正文。'
+    };
+    vi.mocked(window.learning.getTopic)
+      .mockResolvedValueOnce(topic)
+      .mockResolvedValueOnce(reloadedTopic);
+
+    render(<App />);
+    expect(await screen.findByText('先判断瓶颈是在算力还是带宽，再决定后续优化路线。')).toBeInTheDocument();
+
+    await act(async () => {
+      seedReloadCallback?.({ ok: true, reloadedAt: Date.now() });
+    });
+
+    expect(await screen.findByText('热重载后的正文。')).toBeInTheDocument();
+    expect(window.learning.getTopic).toHaveBeenLastCalledWith('T01');
   });
 
   it('updates topic status through the preload learning API', async () => {

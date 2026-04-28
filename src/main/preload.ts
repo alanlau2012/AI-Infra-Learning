@@ -1,7 +1,8 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
   ProgressSummary,
   RoadmapGraph,
+  SeedReloadEvent,
   StageWithTopics,
   StudyStatus,
   TopicDetail
@@ -13,7 +14,16 @@ const learning = {
   getTopic: (topicId: string) => ipcRenderer.invoke('learning:getTopic', topicId) as Promise<TopicDetail>,
   getRoadmapGraph: () => ipcRenderer.invoke('learning:getRoadmapGraph') as Promise<RoadmapGraph>,
   updateTopicStatus: (topicId: string, status: StudyStatus) =>
-    ipcRenderer.invoke('learning:updateTopicStatus', topicId, status) as Promise<TopicDetail>
+    ipcRenderer.invoke('learning:updateTopicStatus', topicId, status) as Promise<TopicDetail>,
+  onSeedReloaded: (callback: (event: SeedReloadEvent) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: SeedReloadEvent) => {
+      callback(payload);
+    };
+    ipcRenderer.on('learning:seedReloaded', listener);
+    return () => {
+      ipcRenderer.off('learning:seedReloaded', listener);
+    };
+  }
 };
 
 contextBridge.exposeInMainWorld('learning', learning);

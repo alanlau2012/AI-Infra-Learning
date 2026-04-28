@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ProgressSummary,
   RoadmapGraph,
@@ -23,49 +23,68 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
   const latestSelectId = useRef(0);
+  const selectedTopicIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadLearningData = useCallback(async (preferredTopicId: string | null, options?: { initial?: boolean }) => {
+    const requestId = ++latestSelectId.current;
+    if (options?.initial) {
+      setIsLoading(true);
+    }
+    setContentError(null);
 
-    async function loadInitialData() {
-      try {
-        const [nextOutline, nextProgress, nextRoadmap] = await Promise.all([
-          window.learning.getOutline(),
-          window.learning.getProgress(),
-          window.learning.getRoadmapGraph()
-        ]);
-        const firstTopicId = nextOutline[0]?.topics[0]?.id ?? null;
-        const firstTopic = firstTopicId ? await window.learning.getTopic(firstTopicId) : null;
+    try {
+      const [nextOutline, nextProgress, nextRoadmap] = await Promise.all([
+        window.learning.getOutline(),
+        window.learning.getProgress(),
+        window.learning.getRoadmapGraph()
+      ]);
+      const topicIds = new Set(nextOutline.flatMap((stage) => stage.topics.map((item) => item.id)));
+      const firstTopicId = nextOutline[0]?.topics[0]?.id ?? null;
+      const nextTopicId = preferredTopicId && topicIds.has(preferredTopicId) ? preferredTopicId : firstTopicId;
+      const nextTopic = nextTopicId ? await window.learning.getTopic(nextTopicId) : null;
 
-        if (!isMounted) {
-          return;
-        }
+      if (latestSelectId.current !== requestId) {
+        return;
+      }
 
-        setOutline(nextOutline);
-        setProgress(nextProgress);
-        setRoadmap(nextRoadmap);
-        setSelectedTopicId(firstTopicId);
-        setTopic(firstTopic);
-      } catch (loadError) {
-        if (isMounted) {
-          setError(loadError instanceof Error ? loadError.message : '加载失败');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      selectedTopicIdRef.current = nextTopicId;
+      setOutline(nextOutline);
+      setProgress(nextProgress);
+      setRoadmap(nextRoadmap);
+      setSelectedTopicId(nextTopicId);
+      setTopic(nextTopic);
+      setError(null);
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : '加载失败';
+      if (options?.initial) {
+        setError(message);
+      } else {
+        setContentError(message);
+      }
+    } finally {
+      if (options?.initial) {
+        setIsLoading(false);
       }
     }
-
-    void loadInitialData();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadLearningData(null, { initial: true });
+  }, [loadLearningData]);
+
+  useEffect(() => {
+    return window.learning.onSeedReloaded((event) => {
+      if (!event.ok) {
+        setContentError(event.error ?? '学习内容热重载失败');
+        return;
+      }
+      void loadLearningData(selectedTopicIdRef.current);
+    });
+  }, [loadLearningData]);
 
   async function selectTopic(topicId: string) {
     const requestId = ++latestSelectId.current;
+    selectedTopicIdRef.current = topicId;
     setSelectedTopicId(topicId);
     setContentError(null);
     try {

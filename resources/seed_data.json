@@ -63,8 +63,35 @@
         "单卡容量规划要区分总KV与per-rank KV，TP下能否分摊取决于KV head分片和后端实现",
         "长上下文场景KV Cache近似随seq_len线性增长，seq_len从4K到32K时KV约增长8倍"
       ],
-      "real_world_connection": "评估MiniMax、Qwen等模型在910B3/B4上的并发时，需要把权重、KV、block碎片和运行时预留放到同一张单卡预算表里",
-      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 放到 GTS 场景\n\n例如内部评估 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。"
+      "real_world_connection": "评估 MiniMax-M2 系列、Qwen 等模型族在 910B3/B4 上的并发时，需要把权重、KV、block 碎片和运行时预留放到同一张单卡预算表里；具体版本以官方模型卡为准。",
+      "body_md": "## 一句话抓手\n\n> KV Cache 是长上下文和高并发的共同账单：模型越会记，服务端越要付显存。\n\n![KV Cache与显存计算 图解](learning-asset://topic-diagrams/t02-kv-cache.svg)\n\n## 问题场景\n\n业务希望把上下文从 8K 提升到 32K，同时保持同等并发。容量评审不能只看模型权重大小，而要把每层 KV、GQA 配置、batch、精度和运行时预留全部写进显存账。\n\n## 第一性原理\n\n把每个用户的上下文想成一本正在写的笔记。每生成一个 token，模型都要把这个 token 在每层 attention 中的 key 和 value 记下来。用户越多、上下文越长，笔记本就越厚，占用的 HBM 也越多。\n\n## 机制拆解\n\nKV Cache 的核心公式是 2 × num_layers × num_kv_heads × head_dim × seq_len × batch_size × bytes_per_element。这里的 2 来自 K 和 V 两份状态。容量规划还要区分总 KV 与每卡 KV；TP 下能否近似按 rank 分摊，取决于 KV head 是否按实现分片、block layout 和后端支持。GQA/MQA 通过减少 KV 头数来压缩缓存，因此同样上下文长度下更容易承载并发。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 910B3 与 910B4 的关键差异会先体现在 HBM 容量水位上。CANN/vLLM Ascend 的 KV block 分配、碎片和预留空间会影响理论公式与实测可承载并发之间的差距。\n\n## 推导示例\n\n用 `2 × layers × kv_heads × head_dim × seq_len × batch × bytes` 估算 KV，再加权重和运行时 buffer。把 seq_len 从 4K 提到 32K，KV 近似放大 8 倍；若 GQA 把 KV heads 从 32 降到 8，则 KV 约降为四分之一。\n\n1. Layers\n2. KV Heads\n3. Head Dim\n4. Seq Len\n5. Batch\n6. 显存预算\n\n## 公式/判断\n\n容量预算应拆成三块：模型权重、KV Cache、运行时开销。权重决定模型能不能放下，KV Cache 决定并发和最大上下文能不能撑住，运行时开销包括激活、临时 buffer、通信和框架预留。做规划时不要把 64GB 或 32GB 全部当作可用 KV 空间，也不要把总 KV 公式直接当作单卡账。\n\n## 放到 GTS 场景\n\n例如内部评估 MiniMax-M2 系列、Qwen 等模型族在 910B3 与 910B4 的模型分层时，不能只问模型文件大小，还要问目标上下文、并发、精度和 GQA 配置。长上下文从 4K 提到 32K，KV Cache 近似线性增长 8 倍，可能直接把原本可跑的并发压到不可接受。\n\n## 工程案例\n\n症状：压测到某并发后 TTFT 激增且出现抢占。观察：KV cache usage 接近阈值、block 分配失败、长上下文请求集中。判断：容量瓶颈而非算子慢。动作：降低最大上下文、分流长请求、启用更小 KV 头模型或 KV 量化。验证：看可用 block、水位和拒绝率。\n\n## 对比与边界\n\nDense、MoE、GQA、MLA 或线性注意力的 KV 账不同。总参数决定权重常驻，KV 结构决定长上下文并发，不能用一个“模型大小”指标覆盖所有部署判断。\n\n## 常见误区\n\n常见误区是只算权重不算 KV，或者只算单用户不算 batch。另一个误区是把总参数与激活参数混为一谈：MoE 的计算可以稀疏，但所有需要常驻的权重和缓存仍会占显存。\n\n## 专家自检\n\n- 为什么 MoE 激活参数小不代表显存账也小？\n- 910B4 上可跑的模型为什么可能无法支撑同样上下文 SLA？\n- KV 量化与权重量化分别改善哪一部分显存账？\n\n## 小结\n\nKV Cache 公式是容量规划的第一把尺。任何模型选型、上下文承诺、并发 SLA 和硬件分级，都应先过这道显存账。",
+      "sources": [
+        {
+          "id": "minimax-hf-org",
+          "title": "MiniMaxAI Hugging Face Organization",
+          "url": "https://huggingface.co/MiniMaxAI",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax 官方 Hugging Face 组织入口",
+            "MiniMax-M2、MiniMax-M2.1、MiniMax-M2.5、MiniMax-M2.7 等模型入口"
+          ]
+        },
+        {
+          "id": "minimax-m2-card",
+          "title": "MiniMax-M2 Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M2",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "官方模型 ID 为 MiniMax-M2",
+            "官方描述为约 230B total parameters / 10B active parameters 的 MoE 模型",
+            "模型卡显示 229B params"
+          ]
+        }
+      ]
     },
     {
       "id": "T03",
@@ -131,10 +158,49 @@
         "线性注意力本质：用O(n)复杂度或固定状态替代完整softmax历史，新token更新状态而不是完整回看",
         "线性注意力的代价：表达能力通常弱于softmax attention，精确检索和远距离依赖捕捉能力需要验证",
         "趋势判断：混合架构常用线性/压缩attention省资源，少数full attention或检索机制保精度",
-        "多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax M2.5更接近MoE + Lightning Attention/混合注意力路线"
+        "多条技术路线并存：Qwen用Gated DeltaNet混合，DeepSeek V4用CSA/HCA压缩稀疏，MiniMax-M1 使用 MoE + Lightning Attention/混合注意力；MiniMax-M2 系列官方说明 M2 回到 full attention"
       ],
-      "real_world_connection": "不同attention机制的模型落到集群上KV Cache占用完全不同，同样显存预算下GQA模型与Gated DeltaNet模型的并发能力可能差3-5倍",
-      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度可以按两条线看：softmax attention 需要随序列增长维护 KV，prefill 还会出现 O(n²) 的注意力矩阵；线性注意力倾向 O(n) 流式更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、Lightning Attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。"
+      "real_world_connection": "不同 attention 机制的模型落到集群上，KV Cache 或状态占用画像不同；同样显存预算下 GQA、Gated DeltaNet、Lightning Attention 或 full attention 的并发能力必须按模型卡与本地压测确认。",
+      "body_md": "## 一句话抓手\n\n> Attention 演进的主线不是名字越来越多，而是大家都在削减“历史上下文”带来的计算和显存账单。\n\n![注意力机制演进：从MHA到线性注意力 图解](learning-asset://topic-diagrams/t19-attention-evolution.svg)\n\n## 问题场景\n\n模型从 8K 对话扩展到 128K/1M 上下文后，传统 attention 的 KV 与 prefill 成本急剧放大。平台要理解 MHA、GQA、MLA、线性注意力和混合架构分别把历史保存在哪里。\n\n## 第一性原理\n\n标准 attention 像每个新 token 都回头翻完整聊天记录。上下文短时这很自然；上下文长到几十万 token 时，每次回看都会变成巨大的账单。各种新机制，本质上是在决定哪些历史必须精确保留，哪些可以压缩成摘要。\n\n## 机制拆解\n\nMHA 为每个头保存独立 KV，表达力强但缓存大。MQA/GQA 减少 KV 头数，牺牲少量灵活性换显存。MLA 将 KV 投影到更小的 latent 空间。线性注意力更进一步，用固定大小状态替代完整 KV 历史，让长度扩展更平滑。\n\n> [!FACT]\n> 来源：MiniMax-M1 官方模型卡与 MiniMax-M2 full attention 技术博客。MiniMax-M1 公开描述为 MoE + Lightning Attention；MiniMax-M2 官方博客则解释 M2 为什么回到 full attention。因此，写作时不能把 M 系列统一归为 Lightning/混合注意力路线。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 在 Ascend 上评估新 attention 机制，不能只看论文复杂度，要确认 CANN/vLLM Ascend 是否有高效 kernel、KV layout 是否匹配、长上下文下 HBM 与通信是否可控。\n\n## 推导示例\n\n把 attention 机制按“是否完整保存 KV”“KV 头数或维度是否压缩”“是否用固定状态替代历史”三维拆解。MHA 成本最高，GQA/MQA 减少 KV 头，MLA 压缩 latent，线性注意力用状态矩阵换精确回看。\n\n1. MHA\n2. MQA\n3. GQA\n4. MLA\n5. Linear Attention\n6. Hybrid\n\n## 公式/判断\n\n复杂度要分 prefill 和 decode 两条线看：prefill 阶段通常要计算随序列长度二次增长的注意力关系；decode 单步不再重算完整 n² 矩阵，但会读取随历史长度线性增长的 KV。线性注意力倾向 O(n) 流式更新或固定状态更新，但精确检索能力通常弱一些。因此 2026 年的方向更多是混合架构，而不是单一路线通吃。\n\n## 放到 GTS 场景\n\n模型落到 GTS 集群时，attention 机制会直接影响每卡并发和长上下文成本。相同参数规模下，GQA、MLA、DeltaNet、MiniMax-M1 的 Lightning Attention、MiniMax-M2 的 full attention 或 CSA/HCA 的 KV/状态画像完全不同，调度器和显存水位策略也不能照搬。\n\n## 工程案例\n\n症状：新模型长上下文理论成本低，但线上吞吐不佳。观察：attention kernel fallback，profiling 中特殊算子耗时高。判断：结构优势被后端适配吃掉。动作：先验证 kernel 成熟度，再决定是否引入生产资源池。验证：按上下文长度比较 TTFT、ITL、HBM 水位。\n\n## 对比与边界\n\n线性或压缩 attention 不是全面替代 softmax attention。它们常在检索、复制和远距离依赖上需要 full attention 层补位，工程上也需要专门 kernel。\n\n## 常见误区\n\n常见误区是认为线性注意力一定更好。它更省资源，但在精确复制、needle retrieval、跨段依赖上可能需要 full attention 层补位。另一个误区是只看论文复杂度，不看框架和硬件 kernel 是否成熟。\n\n## 专家自检\n\n- MHA、GQA、MLA 分别如何改变 KV 账？\n- 为什么混合 attention 成为长上下文主流方向？\n- 评估新 attention 模型时要先验证哪些 Ascend 后端能力？\n\n## 小结\n\nAttention 演进是一组压缩历史的方法谱系。理解每种机制如何保存、压缩或检索历史，才能判断它适合低延迟对话、长文档还是 agent 轨迹。",
+      "sources": [
+        {
+          "id": "minimax-m1-card",
+          "title": "MiniMax-M1-80k-hf Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M1-80k-hf",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax-M1 官方模型名和 40K / 80K thinking budget 版本",
+            "M1 使用 MoE + Lightning Attention",
+            "1M context"
+          ]
+        },
+        {
+          "id": "minimax-m2-full-attention-blog",
+          "title": "Why Did MiniMax M2 End Up as a Full Attention Model?",
+          "url": "https://huggingface.co/blog/MiniMax-AI/why-did-m2-end-up-as-a-full-attention-model",
+          "publisher": "MiniMax / Hugging Face Blog",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "MiniMax 官方解释 M2 采用 full attention 的工程权衡",
+            "用于约束 T19：不要把 MiniMax-M2 系列一概写成 Lightning Attention 或混合注意力"
+          ]
+        },
+        {
+          "id": "minimax-m2-card",
+          "title": "MiniMax-M2 Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M2",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "官方模型 ID 为 MiniMax-M2",
+            "官方描述为约 230B total parameters / 10B active parameters 的 MoE 模型"
+          ]
+        }
+      ]
     },
     {
       "id": "T20",
@@ -400,8 +466,36 @@
         "硬件分级：B3/B4都可按模型大小、SLA、kernel成熟度和业务评测选择精度，不能硬编码为B3只用FP16、B4只用量化",
         "量化不是免费午餐，关键业务慎用激进量化"
       ],
-      "real_world_connection": "MiniMax 2.5在910B3上的精度选择直接影响可行性和质量",
-      "body_md": "## 一句话抓手\n\n> 量化不是把数字变小这么简单，而是在显存、带宽、速度和精度之间做可验证的交换。\n\n![量化技术与硬件分级选型 图解](learning-asset://topic-diagrams/t10-quantization.svg)\n\n## 问题场景\n\n某模型 FP16 在 B4 上放不下，FP8/INT8 后可以启动，但复杂代码任务质量回退。量化评审必须把可部署、可提速和可接受质量分开验收。\n\n## 第一性原理\n\n模型权重像一本很厚的字典。用更少位数存储，相当于把字典压缩，搬运更快、占地更少；但压得太狠，词义就会模糊，模型质量下降。\n\n## 机制拆解\n\n常见量化包括权重量化、激活量化和 KV Cache 量化。FP8、INT8、INT4、FP4 的收益和风险不同，取决于硬件是否有高效指令、kernel 是否成熟、模型是否经过校准或 QAT，以及 MoE expert 是否单独处理。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 上量化收益取决于 CANN kernel、模型格式、校准数据和 vLLM Ascend 支持。只把权重文件变小不代表 AI Core 有高效低精度路径，也不代表采样质量稳定。\n\n## 推导示例\n\n权重量化降低常驻显存和 decode 读权重带宽；KV 量化降低长上下文并发显存；激活量化影响计算路径。三者收益不同，风险也不同。\n\n1. FP16/BF16\n2. FP8\n3. INT8\n4. INT4/FP4\n5. KV Quant\n6. 硬件匹配\n\n## 公式/判断\n\n选型时先算显存节省，再看吞吐是否真的提升，最后用业务集验证质量。权重量化主要降低模型常驻和读权重带宽；KV 量化更直接影响长上下文并发；激活量化则更依赖硬件和 kernel。\n\n## 放到 GTS 场景\n\n在 910B3/B4 分级里，量化可以让原本放不下或并发不足的模型进入可服务区间。但内部上线不能只看 perplexity 或通用榜单，还要看中文、代码、工具调用、长上下文和安全策略上的回归。\n\n## 工程案例\n\n症状：INT4 模型吞吐提升但工具调用错误变多。观察：通用 benchmark 损失小，内部多轮 agent 任务失败率升高。判断：校准集不覆盖真实任务。动作：换 W8A8/FP8、补业务评测、对高价值租户保留高精度版本。验证：看任务成功率而不只看困惑度。\n\n## 对比与边界\n\n低比特不是免费午餐。NVIDIA 上成熟的量化格式不一定在 Ascend 上同样成熟，反之亦然；上线标准应以本平台 kernel 和业务评测为准。\n\n## 常见误区\n\n常见误区是认为位数越低越好。低位格式如果缺少高效 kernel，可能只省显存不提速。另一个误区是用单轮问答判断质量，忽略 agent 多轮中误差累积。\n\n## 专家自检\n\n- 权重量化和 KV 量化分别解决什么问题？\n- 为什么低位量化可能省显存但不提速？\n- 量化灰度应覆盖哪些业务指标？\n\n## 小结\n\n量化是资源换质量的工程工具。正确姿势是硬件支持、kernel 性能、显存收益和业务评测四项一起过关。"
+      "real_world_connection": "MiniMax-M2.5 在 910B3 上的精度选择会影响可行性和质量，但是否能生产部署必须结合上下文长度、KV、kernel 成熟度和业务评测实测。",
+      "body_md": "## 一句话抓手\n\n> 量化不是把数字变小这么简单，而是在显存、带宽、速度和精度之间做可验证的交换。\n\n![量化技术与硬件分级选型 图解](learning-asset://topic-diagrams/t10-quantization.svg)\n\n## 问题场景\n\n某模型 FP16 在 B4 上放不下，FP8/INT8 后可以启动，但复杂代码任务质量回退。量化评审必须把可部署、可提速和可接受质量分开验收。\n\n## 第一性原理\n\n模型权重像一本很厚的字典。用更少位数存储，相当于把字典压缩，搬运更快、占地更少；但压得太狠，词义就会模糊，模型质量下降。\n\n## 机制拆解\n\n常见量化包括权重量化、激活量化和 KV Cache 量化。FP8、INT8、INT4、FP4 的收益和风险不同，取决于硬件是否有高效指令、kernel 是否成熟、模型是否经过校准或 QAT，以及 MoE expert 是否单独处理。\n\n> [!FACT]\n> 来源：MiniMax-M2.5 官方模型卡。MiniMax-M2.5 是官方公开模型，模型卡显示 229B params，并列出 F32、BF16、F8_E4M3 等 tensor type；这些事实只能证明模型与权重格式存在，不等同于 Ascend 上的生产吞吐结论。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> Ascend 上量化收益取决于 CANN kernel、模型格式、校准数据和 vLLM Ascend 支持。只把权重文件变小不代表 AI Core 有高效低精度路径，也不代表采样质量稳定。\n\n## 推导示例\n\n权重量化降低常驻显存和 decode 读权重带宽；KV 量化降低长上下文并发显存；激活量化影响计算路径。三者收益不同，风险也不同。\n\n1. FP16/BF16\n2. FP8\n3. INT8\n4. INT4/FP4\n5. KV Quant\n6. 硬件匹配\n\n## 公式/判断\n\n选型时先算显存节省，再看吞吐是否真的提升，最后用业务集验证质量。权重量化主要降低模型常驻和读权重带宽；KV 量化更直接影响长上下文并发；激活量化则更依赖硬件和 kernel。\n\n> [!ASSUMPTION]\n> 如果某次 decode 完全受权重读取约束，权重量化带来的理论上限接近权重字节下降比例；实际端到端收益还会被反量化、低精度 kernel、KV 读取、采样、通信和 batch 形态稀释，必须以本地压测确认。\n\n## 放到 GTS 场景\n\n以 MiniMax-M2.5 这类 229B 级 MoE 模型为例，量化可以让原本放不下或并发不足的模型进入可评估区间。但在 910B3/B4 分级里，内部上线不能只看模型卡、perplexity 或通用榜单，还要看中文、代码、工具调用、长上下文和安全策略上的回归。\n\n## 工程案例\n\n症状：INT4 模型吞吐提升但工具调用错误变多。观察：通用 benchmark 损失小，内部多轮 agent 任务失败率升高。判断：校准集不覆盖真实任务。动作：换 W8A8/FP8、补业务评测、对高价值租户保留高精度版本。验证：看任务成功率而不只看困惑度。\n\n## 对比与边界\n\n低比特不是免费午餐。NVIDIA 上成熟的量化格式不一定在 Ascend 上同样成熟，反之亦然；上线标准应以本平台 kernel 和业务评测为准。\n\n## 常见误区\n\n常见误区是认为位数越低越好。低位格式如果缺少高效 kernel，可能只省显存不提速。另一个误区是用单轮问答判断质量，忽略 agent 多轮中误差累积。\n\n## 专家自检\n\n- 权重量化和 KV 量化分别解决什么问题？\n- 为什么低位量化可能省显存但不提速？\n- 量化灰度应覆盖哪些业务指标？\n\n## 小结\n\n量化是资源换质量的工程工具。正确姿势是硬件支持、kernel 性能、显存收益和业务评测四项一起过关。",
+      "sources": [
+        {
+          "id": "minimax-m25-card",
+          "title": "MiniMax-M2.5 Model Card",
+          "url": "https://huggingface.co/MiniMaxAI/MiniMax-M2.5",
+          "publisher": "Hugging Face / MiniMax",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "官方模型 ID 为 MiniMax-M2.5",
+            "模型卡显示 229B params",
+            "模型卡列出 F32、BF16、F8_E4M3 tensor type",
+            "M2.5 / M2.5-Lightning 是速度不同、能力相同的服务版本"
+          ]
+        },
+        {
+          "id": "minimax-api-models",
+          "title": "MiniMax API Models",
+          "url": "https://platform.minimax.io/docs/guides/models-intro",
+          "publisher": "MiniMax API Docs",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "API 文档列出 MiniMax-M2.5 与 MiniMax-M2.5-highspeed",
+            "可用于区分 open-weight 模型 ID 与 API 服务变体"
+          ]
+        }
+      ]
     },
     {
       "id": "T11",

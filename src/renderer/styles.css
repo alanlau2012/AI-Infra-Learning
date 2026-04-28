@@ -368,11 +368,10 @@ a:focus-visible {
 
 .learning-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 820px) 304px;
+  grid-template-columns: minmax(0, 1fr) clamp(304px, 22vw, 380px);
   gap: 28px;
   align-items: start;
-  max-width: 1220px;
-  margin: 0 auto;
+  width: 100%;
   padding: 28px 30px 46px;
 }
 
@@ -408,14 +407,12 @@ a:focus-visible {
 
 .topic-hero h3 {
   margin: 9px 0 0;
-  max-width: 680px;
   color: var(--text);
   font-size: 30px;
   line-height: 1.18;
 }
 
 .topic-hero p {
-  max-width: 720px;
   margin: 16px 0 0;
   color: var(--soft);
   font-size: 15px;
@@ -893,7 +890,6 @@ a:focus-visible {
 .markdown-body img {
   display: block;
   width: 100%;
-  max-width: 900px;
   height: auto;
   margin: 18px 0 24px;
   padding: 16px;

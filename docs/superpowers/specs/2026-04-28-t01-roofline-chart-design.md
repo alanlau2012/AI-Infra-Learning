@@ -52,7 +52,8 @@ main 进程
   preload.ts                window.learning.{getTopicGate, startGateAttempt, checkSingleAnswer, finalizeAttempt}
   ↓ IPC
 renderer
-  markdown.ts               markdown-it 自定义 directive plugin
+  directive.ts              splitByDirective 纯函数（split-before-render，绕过 markdown-it）
+  markdown.ts               不变（不引入 directive plugin）
   MarkdownContent.tsx       按 directive 切段，每段独立 React 树
   components/interactive/RooflineChart/
     index.tsx               外壳 + mode 切换
@@ -364,29 +365,31 @@ CommonMark 风格 fenced directive：
 :::
 ```
 
-### 7.2 markdown-it 插件实现要点
+### 7.2 splitByDirective 实现要点
 
-文件：`src/renderer/lib/markdown.ts`（在现有渲染管道中加一个 plugin）。
+文件：`src/renderer/lib/directive.ts`（新建）。
 
-- 识别 `:::interactive{key=value ...}` 开行 + `:::` 闭行
-- 仅当 key 在 `['component', 'mode']` 白名单内才采纳；其它 key 静默忽略（不报错以免影响普通 `:::` 块）
+**关键决策：split-before-render**——directive 在送入 markdown-it 前就被剥离成独立 segment，因此 markdown-it 永远看不到 directive 文本，DOMPurify 也无需新增 data-* 白名单。这比"markdown-it 插件 → portal 挂载"的方案简单得多，且天然防止 XSS。
+
+`splitByDirective(bodyMd: string): Segment[]` 行为：
+- 识别 `:::interactive{key=value ...}` 开行 + `:::` 闭行（必须独立成行，前后只允许空白）
+- key 白名单：`['component', 'mode']`；其它 key 静默忽略
 - value 白名单：
   - `component ∈ {'roofline-chart'}`（未来加 T02 / T06 等扩展）
   - `mode ∈ {'explore', 'gate'}`
-- 产出 HTML：`<div data-interactive="<component>" data-mode="<mode>"></div>`
-- 不识别的 component / mode → 输出空 div + console warning
+- 不识别的 component / mode → 该 segment 跳过（输出 null，由调用方决定如何降级）；同时 console warning
+- **代码块感知**：fenced code block（``` 或 ~~~ 包围）内的 directive 文本必须保留为字面文本，不切段。block 内的 `:::` 行不被解析
 
-### 7.3 DOMPurify 配置调整
+### 7.3 DOMPurify 配置
 
-`src/renderer/lib/markdown.ts` 的 DOMPurify 配置：
-- `ADD_DATA_URI_TAGS`: 不变
-- 新增 hook：在 `afterSanitizeAttributes` 中，仅保留 `data-interactive` / `data-mode`，且其值必须在白名单内，否则剥离
-- 其它 `data-*` 属性的现有处理不变（继续被剥离）
+**不动**。directive 在 markdown-it 之前已被剥离，markdown-it 与 DOMPurify 看不到任何 `data-interactive` / `data-mode` 属性。
 
-测试用例必须覆盖：
-- 合法 directive 通过
-- `<div data-interactive="evil" data-mode="x">` 攻击 → 属性被剥离
-- 嵌入 `<script>` / `javascript:` URL → 仍被 sanitize
+测试 `markdownDirective.test.ts` 必须覆盖：
+- 合法 directive 切段：开闭行各占一行 + 空白宽容
+- 非白名单 key / value：被忽略，不入 segment
+- 代码块内 directive 不切段（保留为字面 markdown）
+- 多个 directive 交错于 markdown：切段顺序正确
+- directive 闭行缺失：作为普通文本处理，不抛错
 
 ### 7.4 MarkdownContent.tsx 渲染
 
@@ -421,7 +424,7 @@ function renderBody(bodyMd: string, topicId: string) {
 | 项 | 处置 |
 |---|---|
 | `markdown-it` `html: false` | 不变 |
-| DOMPurify | 仅 hook 加 data-interactive / data-mode 白名单，其它策略不变 |
+| DOMPurify | 不变（directive 走 split-before-render 路径，markdown-it 永远看不到 directive，DOMPurify 也无需新增白名单——见 §7.3）|
 | CSP | 不动。所有交互都是 React DOM，无 inline script、无 eval |
 | `contextIsolation` / `sandbox` / `nodeIntegration` | 不变 |
 | 依赖审查 | `d3-scale` 是纯 JS 数学包，无 eval、无 fetch |
@@ -443,8 +446,8 @@ function renderBody(bodyMd: string, topicId: string) {
 | 纯函数 | `test/rooflineMath.test.ts`（新） | ~12 | AI/perf 数学、log scale 像素映射、bound 判定（含 AI==ridge 边界）|
 | learningStore.gate | `test/learningStore.gate.test.ts`（新） | ~12 | `getTopicGate` 是纯读取（不改 progress.json）；`startGateAttempt` 抽样 + attempts++；`GateQuestion` 不含 `ai` 不含 `correctAnswer`；`checkSingleAnswer` 校分；`finalizeAttempt` 写盘 + 通过自动 completed；samplingRules 满足（≥1 边界 + ≥1 跨硬件）；非法 topicId / questionId / answer 拒绝 |
 | 进度迁移 | `test/learningStore.migration.test.ts`（新） | ~3 | v1 → v2；v2 直通；坏数据回退默认 |
-| markdown directive | `test/markdownDirective.test.ts`（新） | ~9 | directive → data 属性正确；非白名单值剥离；XSS 不漏；**code block 内的 directive 不被解析**（fenced code block 应原样输出） |
-| DOMPurify 配置 | `test/markdown.test.ts`（扩展） | +3 | data-interactive/data-mode 白名单；其它 data-* 仍剥离 |
+| markdown directive | `test/markdownDirective.test.ts`（新） | ~9 | `splitByDirective` 切段顺序；非白名单 key/value 被忽略；**fenced code block 内 directive 不切段**；闭行缺失作为普通文本 |
+| DOMPurify 配置 | `test/markdown.test.ts` | 不变 | directive 在送入 markdown-it 前已剥离，DOMPurify 无需新增白名单 |
 | Electron 安全 | `test/electronSecurity.test.ts`（扩展） | +2 | IPC 入参校验；renderer 拿到的 questions 不含答案 |
 | renderer 集成 | `test/renderer.test.tsx`（扩展） | +3 | T01 加载显示 explore 占位；点击"开始检验"切到 gate 占位；通过后右栏自动激活 |
 
@@ -528,15 +531,17 @@ function renderBody(bodyMd: string, topicId: string) {
 - `src/shared/types.ts`（新类型）
 - `src/main/learningStore.ts`（gate 函数 + progress 迁移）
 - `src/main/main.ts`（IPC 注册 + `updateTopicStatus` gate 校验）
-- `src/main/preload.ts`（暴露三个新方法）
-- `src/renderer/lib/markdown.ts`（directive plugin + DOMPurify hook）
+- `src/main/preload.ts`（暴露四个新方法）
 - `src/renderer/components/MarkdownContent.tsx`（按 directive 切段）
 - `src/renderer/components/TopicDetailView.tsx`（右栏"已完成"按钮 gate 联动）
 - `src/renderer/styles.css`（gate 状态样式）
-- `test/markdown.test.ts`（DOMPurify 扩展）
+- `test/learningStore.test.ts`（既有"每个 topic 必须有 SVG image" 用例放宽：含 gate 的 topic 用 directive；H2 数允许 6）
 - `test/electronSecurity.test.ts`（IPC 校验扩展）
 - `test/renderer.test.tsx`（gate 流程扩展）
-- `package.json`（加 `d3-scale` 依赖）
+- `package.json`（加 `d3-scale` + `@types/d3-scale` 依赖）
+
+**新增**（除 §13 主清单外）：
+- `src/renderer/lib/directive.ts`（splitByDirective）
 
 **删除**：
 - `resources/topic-diagrams/t01-roofline.svg`

@@ -528,8 +528,35 @@
         "上线前三重评估：质量benchmark + 安全对齐 + 性能TPOT/吞吐",
         "蒸馏模型安全风险：社区蒸馏模型可能对齐缺失"
       ],
-      "real_world_connection": "评估新模型如Qwen3.6-27B时走的就是评估→灰度→上线流程",
-      "body_md": "## 一句话抓手\n\n> 模型生命周期管理的目标，是让模型升级像工程发布，而不是一次高风险手工替换。\n\n![模型生命周期管理 图解](learning-asset://topic-diagrams/t16-model-lifecycle.svg)\n\n## 问题场景\n\n新模型到来时，团队需要回答：能否在 910B 上跑、支持什么精度、质量是否达标、如何灰度、失败怎么回滚。生命周期管理把这些问题前置。\n\n## 第一性原理\n\n模型不是上传后就结束的文件，而是一条从准入、评测、部署、灰度、监控到回滚的流水线。每个环节都少一点随意，生产事故就少一分概率。\n\n## 机制拆解\n\n生命周期管理包括模型元数据、权重与 tokenizer 版本、量化格式、依赖框架、评测报告、部署配置、灰度策略、线上指标和回滚记录。推理平台还要记录卡型兼容、最大上下文、推荐 batch 和已知限制。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 模型注册信息应记录 Ascend 兼容性：CANN 版本、torch-npu/vLLM Ascend 版本、支持精度、最大上下文、已验证卡型、已知 fallback 和推荐部署参数。\n\n## 推导示例\n\n上线门禁 = 质量基线 + 安全策略 + 性能压测 + 成本测算 + 回滚路径。灰度期间比较新旧版本的 TTFT、ITL、错误率、输出质量和资源成本。\n\n1. Register\n2. Evaluate\n3. Deploy\n4. Canary\n5. Monitor\n6. Rollback\n\n## 公式/判断\n\n上线门禁可以分为功能正确性、质量评测、性能压测、安全策略和回滚可行性。任何一项不过关，都不应进入生产默认版本。灰度期间要同时比较新旧版本的质量、TTFT/ITL、错误率和成本。\n\n## 放到 GTS 场景\n\nGTS 需要频繁评估 Qwen、DeepSeek、MiniMax 等模型族。把每次评估固化为生命周期记录，可以避免“某模型之前好像能跑”的口头经验，也便于不同卡型和不同业务复用结论。\n\n## 工程案例\n\n症状：灰度模型质量好但线上错误率高。观察：少数长上下文请求触发 tokenizer/config 边界问题。判断：离线评测覆盖不足。动作：补长上下文与工具调用回归、缩小灰度、保留旧版本路由。验证：错误率和回滚时间。\n\n## 对比与边界\n\n模型发布不是替换权重文件。权重、tokenizer、prompt 模板、量化配置、runtime 镜像和路由策略必须作为一个发布单元。\n\n## 常见误区\n\n常见误区是只保存模型名，不保存完整依赖和配置。另一个误区是没有回滚演练，等线上异常时才发现旧版本权重、镜像或路由策略已经不可用。\n\n## 专家自检\n\n- 模型注册表应记录哪些 Ascend 特有信息？\n- 灰度指标为什么要同时看质量和性能？\n- 没有回滚演练会带来什么风险？\n\n## 小结\n\n模型生命周期管理把模型当作生产制品治理。版本、评测、部署和回滚形成闭环，平台才能稳定吸收模型快速迭代。"
+      "real_world_connection": "评估新模型如Qwen3-Next-80B-A3B时，应走评估→灰度→上线流程；具体部署可行性以模型卡、Ascend后端支持和压测结果为准",
+      "body_md": "## 一句话抓手\n\n> 模型生命周期管理的目标，是让模型升级像工程发布，而不是一次高风险手工替换。\n\n![模型生命周期管理 图解](learning-asset://topic-diagrams/t16-model-lifecycle.svg)\n\n## 问题场景\n\n以 Qwen3-Next-80B-A3B 这类架构变化较大的开源模型为例，团队需要回答：能否在 910B 上跑、支持什么精度、质量是否达标、如何灰度、失败怎么回滚。生命周期管理把这些问题前置。\n\n## 第一性原理\n\n模型不是上传后就结束的文件，而是一条从准入、评测、部署、灰度、监控到回滚的流水线。每个环节都少一点随意，生产事故就少一分概率。\n\n## 机制拆解\n\n> [!FACT]\n> 来源：Qwen3-Next-80B-A3B-Instruct 官方模型卡与 HF Transformers Qwen3-Next 文档。Qwen3-Next-80B-A3B 是总参 80B / 激活 3B 的混合 Gated DeltaNet + Gated Attention、高稀疏 MoE 模型；生命周期记录应把模型卡、runtime 版本、kernel 支持、量化格式、评测报告和回滚制品绑定在一起。\n\n生命周期管理包括模型元数据、权重与 tokenizer 版本、量化格式、依赖框架、评测报告、部署配置、灰度策略、线上指标和回滚记录。推理平台还要记录卡型兼容、最大上下文、推荐 batch 和已知限制。\n\n## 昇腾落地点\n\n> [!ASCEND]\n> 模型注册信息应记录 Ascend 兼容性：CANN 版本、torch-npu/vLLM Ascend 版本、支持精度、最大上下文、已验证卡型、已知 fallback 和推荐部署参数。对 Qwen3-Next 这类含特殊 attention / MoE 路径的模型，还要把 Gated DeltaNet、Gated Attention、MoE 路由和 MTP 的 kernel 覆盖度列为上线门禁。\n\n## 推导示例\n\n上线门禁 = 质量基线 + 安全策略 + 性能压测 + 成本测算 + 回滚路径。灰度期间比较新旧版本的 TTFT、ITL、错误率、输出质量和资源成本。\n\n1. Register\n2. Evaluate\n3. Deploy\n4. Canary\n5. Monitor\n6. Rollback\n\n## 公式/判断\n\n上线门禁可以分为功能正确性、质量评测、性能压测、安全策略和回滚可行性。任何一项不过关，都不应进入生产默认版本。灰度期间要同时比较新旧版本的质量、TTFT/ITL、错误率和成本。\n\n## 放到 GTS 场景\n\n> [!ASSUMPTION]\n> GTS 需要频繁评估 Qwen、DeepSeek、MiniMax 等模型族。这里的 MiniMax 只作为待纳入生命周期流程的未核验模型族示例，不绑定任何具体 MiniMax 型号、参数或部署数字；具体事实由 MiniMax 分支单独校验。把每次评估固化为生命周期记录，可以避免“某模型之前好像能跑”的口头经验，也便于不同卡型和不同业务复用结论。\n\n## 工程案例\n\n症状：灰度模型质量好但线上错误率高。观察：少数长上下文请求触发 tokenizer/config 边界问题。判断：离线评测覆盖不足。动作：补长上下文与工具调用回归、缩小灰度、保留旧版本路由。验证：错误率和回滚时间。\n\n## 对比与边界\n\n模型发布不是替换权重文件。权重、tokenizer、prompt 模板、量化配置、runtime 镜像和路由策略必须作为一个发布单元。\n\n## 常见误区\n\n常见误区是只保存模型名，不保存完整依赖和配置。另一个误区是没有回滚演练，等线上异常时才发现旧版本权重、镜像或路由策略已经不可用。\n\n## 专家自检\n\n- 模型注册表应记录哪些 Ascend 特有信息？\n- 灰度指标为什么要同时看质量和性能？\n- 没有回滚演练会带来什么风险？\n\n## 小结\n\n模型生命周期管理把模型当作生产制品治理。版本、评测、部署和回滚形成闭环，平台才能稳定吸收模型快速迭代。",
+      "sources": [
+        {
+          "id": "qwen3-next-80b-card",
+          "title": "Qwen3-Next-80B-A3B-Instruct Model Card",
+          "url": "https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct",
+          "publisher": "Hugging Face / Qwen Team",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Qwen3-Next-80B-A3B 官方模型仓库",
+            "T16 生命周期示例所用 Qwen 型号来自官方发布渠道",
+            "Qwen3-Next-80B-A3B 总参 80B / 激活 3B"
+          ]
+        },
+        {
+          "id": "qwen3-next-hf-docs",
+          "title": "Qwen3-Next Overview · Hugging Face Transformers",
+          "url": "https://huggingface.co/docs/transformers/main/model_doc/qwen3_next",
+          "publisher": "Hugging Face Transformers",
+          "last_verified": "2026-04-28",
+          "confidence": "high",
+          "covers": [
+            "Qwen3-Next 架构定义：Gated DeltaNet + Gated Attention 组合",
+            "Qwen3-Next 是需要额外 runtime/kernel 适配检查的生命周期管理示例"
+          ]
+        }
+      ]
     },
     {
       "id": "T17",

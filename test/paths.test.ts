@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveProgressPath, resolveSeedDataPath, resolveTopicDiagramPath } from '../src/main/paths';
+import { resolveProgressPath, resolveSeedDataPath, resolveSettingsPath, resolveTopicDiagramPath } from '../src/main/paths';
 
 describe('resource path resolution', () => {
   it('uses project resources in Electron Forge dev mode when app is not packaged', () => {
@@ -20,6 +20,12 @@ describe('resource path resolution', () => {
   it('stores progress under Electron userData', () => {
     expect(resolveProgressPath('C:/Users/Test/AppData/Roaming/ai-infra-learning')).toBe(
       path.join('C:/Users/Test/AppData/Roaming/ai-infra-learning', 'progress.json')
+    );
+  });
+
+  it('stores settings under Electron userData', () => {
+    expect(resolveSettingsPath('C:/Users/Test/AppData/Roaming/ai-infra-learning')).toBe(
+      path.join('C:/Users/Test/AppData/Roaming/ai-infra-learning', 'settings.json')
     );
   });
 

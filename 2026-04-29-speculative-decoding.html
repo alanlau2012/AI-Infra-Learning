@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>投机解码 · Speculative Decoding</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..900;1,8..60,300..900&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#faf8f3;
+  --bg-soft:#f3efe5;
+  --ink:#1a1918;
+  --ink-soft:#3d3933;
+  --muted:#8a847b;
+  --rule:rgba(26,25,24,0.14);
+  --accent:#a8322d;          /* oxblood */
+  --accent-soft:#c5746f;
+  --blue:#1f3a5f;            /* prussian */
+  --blue-soft:#7a93b3;
+  --sage:#6c7d5a;
+  --ochre:#b8823a;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Source Serif 4',Georgia,serif;font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01","onum"}
+
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(168,50,45,0.3)}
+a:hover{border-bottom-color:var(--accent)}
+
+.wrap{max-width:780px;margin:0 auto;padding:80px 32px 120px}
+.dek-bar{font-family:'Instrument Sans',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+h1{font-family:'Source Serif 4',serif;font-weight:600;font-size:48px;line-height:1.12;letter-spacing:-0.01em;margin:0 0 16px;font-variation-settings:"opsz" 60}
+.dek{font-family:'Source Serif 4',serif;font-style:italic;font-size:21px;line-height:1.5;color:var(--ink-soft);margin:0 0 36px;max-width:640px}
+.byline{font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--muted);letter-spacing:0.04em;margin-bottom:48px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:14px 0;display:flex;justify-content:space-between}
+.byline span{display:inline-block}
+.byline em{font-style:normal;color:var(--ink-soft);font-weight:500}
+
+nav.toc{font-family:'Instrument Sans',sans-serif;font-size:13px;color:var(--muted);margin:0 0 56px;display:flex;flex-wrap:wrap;gap:22px}
+nav.toc a{color:var(--ink-soft);border:none}
+nav.toc a:hover{color:var(--accent)}
+nav.toc a::before{content:attr(data-num);font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-right:6px;letter-spacing:0;}
+
+.section{margin:0 0 72px;scroll-margin-top:24px}
+.section-head{display:flex;align-items:baseline;gap:18px;margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.section-num{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent);letter-spacing:0.05em;flex-shrink:0;padding-top:6px}
+h2{font-family:'Source Serif 4',serif;font-weight:600;font-size:28px;line-height:1.25;margin:0;letter-spacing:-0.005em}
+.section p{margin:0 0 18px}
+.section p+p{margin-top:0}
+em{font-style:italic;color:var(--ink)}
+strong{font-weight:600;color:var(--ink)}
+code{font-family:'JetBrains Mono',monospace;font-size:0.88em;background:var(--bg-soft);padding:1px 5px;border-radius:2px;letter-spacing:0.01em}
+
+.insight{margin:28px 0;padding:6px 0 6px 22px;border-left:3px solid var(--accent);font-family:'Source Serif 4',serif;font-style:italic;font-size:18px;line-height:1.55;color:var(--ink-soft)}
+.insight strong{font-style:normal;color:var(--accent);font-weight:600}
+
+.figure{margin:32px 0 16px;padding:0}
+.figure canvas{display:block;width:100%;height:auto;background:transparent}
+.caption{font-family:'Instrument Sans',sans-serif;font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:14px;padding-top:8px;border-top:1px solid var(--rule);letter-spacing:0.01em}
+.caption b{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-soft);font-weight:500;letter-spacing:0.06em;text-transform:uppercase;margin-right:8px}
+
+/* controls */
+.controls{display:grid;grid-template-columns:1fr;gap:18px;margin:18px 0;padding:18px 22px;background:var(--bg-soft);border:1px solid var(--rule)}
+.ctrl{display:grid;grid-template-columns:120px 1fr 70px;align-items:center;gap:16px}
+.ctrl-label{font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--ink-soft);letter-spacing:0.04em}
+.ctrl-label small{display:block;color:var(--muted);font-size:10.5px;letter-spacing:0.02em;margin-top:2px}
+.ctrl-val{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent);text-align:right;font-weight:500}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:2px;background:var(--rule);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);box-shadow:0 0 0 1px var(--accent);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);box-shadow:0 0 0 1px var(--accent);cursor:pointer;border:none}
+
+button.play{display:inline-flex;align-items:center;gap:10px;background:none;border:1px solid var(--ink);color:var(--ink);padding:8px 16px 8px 12px;font-family:'Instrument Sans',sans-serif;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:background 0.15s}
+button.play:hover{background:var(--ink);color:var(--bg)}
+button.play svg{flex-shrink:0}
+
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:20px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.metric{padding:14px 0;text-align:left;border-right:1px solid var(--rule)}
+.metric:last-child{border-right:none}
+.metric .lbl{font-family:'Instrument Sans',sans-serif;font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.metric .val{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--ink);font-weight:500}
+.metric .val .unit{font-size:13px;color:var(--muted);margin-left:2px}
+.metric.accent .val{color:var(--accent)}
+
+.formula{font-family:'JetBrains Mono',monospace;font-size:14.5px;background:var(--bg-soft);padding:14px 20px;border-left:3px solid var(--rule);margin:18px 0;letter-spacing:0.02em;line-height:1.7;overflow-x:auto;white-space:pre}
+
+table.calc{width:100%;border-collapse:collapse;margin:20px 0;font-size:14.5px}
+table.calc td,table.calc th{padding:9px 12px;text-align:left;border-bottom:1px solid var(--rule);font-family:'Source Serif 4',serif}
+table.calc th{font-family:'Instrument Sans',sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);font-weight:500;border-bottom:1px solid var(--ink)}
+table.calc td.num{font-family:'JetBrains Mono',monospace;text-align:right;color:var(--ink-soft)}
+table.calc td.label{color:var(--ink-soft)}
+table.calc tr.total td{border-bottom:none;border-top:1px solid var(--ink);font-weight:600;color:var(--ink);padding-top:12px}
+table.calc tr.total td.num{color:var(--accent)}
+
+.remember{counter-reset:rmb}
+.remember p{margin:0 0 14px;padding-left:36px;position:relative;font-size:17px}
+.remember p::before{counter-increment:rmb;content:counter(rmb,upper-roman) ".";font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);position:absolute;left:0;top:6px;letter-spacing:0.04em}
+
+.footer{margin-top:80px;padding-top:24px;border-top:1px solid var(--rule);font-family:'Instrument Sans',sans-serif;font-size:11.5px;color:var(--muted);letter-spacing:0.05em;display:flex;justify-content:space-between}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important}
+}
+@media (max-width:720px){
+  .wrap{padding:48px 22px 80px}
+  h1{font-size:34px}
+  .dek{font-size:18px}
+  .ctrl{grid-template-columns:90px 1fr 56px;gap:10px}
+  .metrics{grid-template-columns:1fr;border-left:1px solid var(--rule);border-right:1px solid var(--rule)}
+  .metric{border-right:none;border-bottom:1px solid var(--rule)}
+  .metric:last-child{border-bottom:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="dek-bar">AI Infra · Daily Lesson · 2026-04-29</div>
+<h1>投机解码：一次<em style="font-style:italic">猜</em>多步，验<em style="font-style:italic">一</em>把</h1>
+<p class="dek">Speculative Decoding 让一个小模型替大模型先“起草”几枚 token，大模型再用一次前向把它们全部审一遍。在 memory-bound 的 decode 阶段，这种“批量赌博”常常能换来 2–3× 的加速。</p>
+
+<div class="byline">
+  <span>题目 <em>Speculative Decoding</em></span>
+  <span>预计 <em>5 分钟</em></span>
+  <span>难度 <em>★★★☆☆</em></span>
+</div>
+
+<nav class="toc">
+  <a href="#s1" data-num="I">decode 为什么慢</a>
+  <a href="#s2" data-num="II">起草与验稿</a>
+  <a href="#s3" data-num="III">期望接受 token 数</a>
+  <a href="#s4" data-num="IV">Llama-3-70B 算盘</a>
+  <a href="#s5" data-num="V">要记住的</a>
+</nav>
+
+<!-- ========================= I ========================= -->
+<section class="section" id="s1">
+  <div class="section-head"><div class="section-num">I.</div><h2>Decode 是 memory-bound 的，单步算力被白白浪费</h2></div>
+
+  <p>大模型推理分两段：<strong>Prefill</strong> 把整段 prompt 一次性灌入，FLOPs 直接拉满；<strong>Decode</strong> 则一步生成一个 token，每生成一个新 token 都要把 KV cache、所有权重再过一遍 HBM。换句话说，decode 阶段的<em>瓶颈不是算力</em>，而是把权重从显存搬进 SM 的带宽。</p>
+
+  <p>这就埋下一颗很大的彩蛋：既然 decode 一步搬一次权重几乎等于搬十次的代价，那<em>能不能让一次搬运顺便算十个 token</em>？答案是：能 — 只要这十个 token 你<em>提前猜对</em>。</p>
+
+  <div class="figure">
+    <canvas id="cv-bottleneck" width="780" height="220"></canvas>
+    <div class="caption"><b>Fig. 1</b>每根条形是一次 decode 步：HBM 搬权重的时间远大于矩阵计算的时间。compute 单元在大半时间里是空闲的——这正是“可以顺手再算几个 token”的空间。</div>
+  </div>
+
+  <div class="insight"><strong>核心直觉.</strong> 在 memory-bound 区，把 batch 从 1 变成 γ 几乎免费——只要 KV cache 装得下、SM 也算得过来。</div>
+</section>
+
+<!-- ========================= II ========================= -->
+<section class="section" id="s2">
+  <div class="section-head"><div class="section-num">II.</div><h2>起草模型抢答，目标模型一笔验稿</h2></div>
+
+  <p>投机解码引入一个<em>小</em>模型 M<sub>d</sub>（draft，比如 Llama-3-8B）和一个<em>大</em>模型 M<sub>t</sub>（target，比如 Llama-3-70B）。流程是：</p>
+
+  <p>① M<sub>d</sub> 顺序生成 γ 个 draft token（很快，因为它小）。② M<sub>t</sub> 把这 γ 个 token <em>一次</em>前向跑完，拿到每个位置的真实分布。③ 从前往后比对，用<strong>修正过的拒绝采样</strong>判定接受还是拒绝。④ 第一次拒绝时，从修正分布里重采一个新 token；如果 γ 个全部接受，再白送一个。</p>
+
+  <p>关键设计：M<sub>t</sub> 的那一次前向是<em>并行</em>的，γ 个 token 跑出来花的时间≈一次普通 decode（因为 decode 阶段它本来就在浪费算力）。所以代价表大致是 <code>γ × T_d + 1 × T_t</code>，产出却是 1 到 γ+1 个新 token。</p>
+
+  <div class="figure">
+    <canvas id="cv-timeline" width="780" height="280"></canvas>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <button class="play" id="btn-play">
+        <svg width="10" height="11" viewBox="0 0 10 11"><path d="M0 0 L0 11 L10 5.5 Z" fill="currentColor"/></svg>
+        <span id="btn-play-label">播放</span>
+      </button>
+    </div>
+    <div class="caption"><b>Fig. 2</b>上轨：纯 autoregressive，每个 token 一格 T<sub>t</sub>。下轨：投机解码，γ 个细格是 draft（T<sub>d</sub> ≪ T<sub>t</sub>），紧接着一格粗的是 target verify。绿色 = 接受，红色 = 拒绝（剩余 draft 全部丢弃）。</div>
+  </div>
+
+  <div class="insight"><strong>关键观察.</strong> 拒绝并不浪费 verify——verify 那一步本身已经给出一个新 token。真正浪费的是已经被起草、却被拒绝后的位置——所以 γ 不能取得太大。</div>
+</section>
+
+<!-- ========================= III ========================= -->
+<section class="section" id="s3">
+  <div class="section-head"><div class="section-num">III.</div><h2>期望接受 token 数：α 与 γ 的拉锯</h2></div>
+
+  <p>把每个 draft token 被接受的概率记作 α（独立同分布是个简化假设，但抓住了主要项）。设 γ 为一次起草的长度，c = T<sub>d</sub> / T<sub>t</sub> 为草稿/目标的<em>每步</em>耗时比。一轮投机解码在期望意义上：</p>
+
+  <div class="formula">期望产出 token 数  E[N] = (1 − α^(γ+1)) / (1 − α)
+一轮耗时         E[t] = γ · c + 1   （以 T_t 为单位）
+期望加速比        S(α, γ) = E[N] / E[t]</div>
+
+  <p>α 越高、γ 越长，第一项就越接近 γ + 1（“几乎全部接受”）。但 γ 越长，分母里 γ·c 也线性涨——一旦草稿成本压过被多接受的好处，加速就掉头向下。下面这两根滑杆让你亲手把这条曲线推出来：</p>
+
+  <div class="controls">
+    <div class="ctrl">
+      <div class="ctrl-label">α<small>每枚 draft token 的接受概率</small></div>
+      <input type="range" id="r-alpha" min="0.05" max="0.98" step="0.01" value="0.75" />
+      <div class="ctrl-val" id="v-alpha">0.75</div>
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-label">γ<small>一次起草多少 token</small></div>
+      <input type="range" id="r-gamma" min="1" max="12" step="1" value="5" />
+      <div class="ctrl-val" id="v-gamma">5</div>
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-label">c<small>T_draft / T_target</small></div>
+      <input type="range" id="r-cost" min="0.02" max="0.50" step="0.01" value="0.12" />
+      <div class="ctrl-val" id="v-cost">0.12</div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="lbl">期望产出 / 轮</div><div class="val" id="m-en">—<span class="unit"> tok</span></div></div>
+    <div class="metric"><div class="lbl">期望耗时 / 轮</div><div class="val" id="m-et">—<span class="unit"> ×T_t</span></div></div>
+    <div class="metric accent"><div class="lbl">加速比 vs. 普通 decode</div><div class="val" id="m-sp">—<span class="unit">×</span></div></div>
+  </div>
+
+  <div class="figure">
+    <canvas id="cv-curve" width="780" height="280"></canvas>
+    <div class="caption"><b>Fig. 3</b>固定当前 α 与 c，横轴扫 γ ∈ [1, 12]，纵轴是加速比 S(α, γ)。红点是当前选择，灰色虚线是“拐点 γ*”——再大就开始倒退。把 α 推到 0.5 看看曲线如何被压扁；把 c 推到 0.3 看看顶点如何左移。</div>
+  </div>
+
+  <div class="insight"><strong>结论.</strong> α 决定<em>能不能值</em>，c 决定<em>γ 能拉多长</em>。生产里常见的 α ≈ 0.7、c ≈ 0.1 给出 γ* ≈ 5–7、S ≈ 2.4×。</div>
+</section>
+
+<!-- ========================= IV ========================= -->
+<section class="section" id="s4">
+  <div class="section-head"><div class="section-num">IV.</div><h2>背一遍：Llama-3-70B + 8B 的算盘</h2></div>
+
+  <p>用现实数字喂这个公式。Target 取 Llama-3-70B（70B 参数，bf16 ≈ 140 GB 权重），draft 取同家族的 Llama-3-8B（≈ 16 GB）。Decode 阶段两者都被 HBM 带宽 (~3.35 TB/s on H100) 支配。粗算每 token 时间正比于权重大小 / 带宽：</p>
+
+  <table class="calc">
+    <thead><tr><th>量</th><th>记号</th><th>取值</th></tr></thead>
+    <tbody>
+      <tr><td class="label">Target 每 decode step</td><td><code>T_t</code></td><td class="num">≈ 42 ms</td></tr>
+      <tr><td class="label">Draft 每 decode step</td><td><code>T_d</code></td><td class="num">≈ 5 ms</td></tr>
+      <tr><td class="label">耗时比</td><td><code>c = T_d / T_t</code></td><td class="num">≈ 0.12</td></tr>
+      <tr><td class="label">同家族对齐 → 接受率（实测）</td><td><code>α</code></td><td class="num">≈ 0.75</td></tr>
+      <tr><td class="label">起草长度</td><td><code>γ</code></td><td class="num">5</td></tr>
+      <tr><td class="label">期望接受 (1−α^(γ+1))/(1−α)</td><td><code>E[N]</code></td><td class="num">≈ 3.22 tok</td></tr>
+      <tr><td class="label">期望耗时 γ·c + 1</td><td><code>E[t]</code></td><td class="num">≈ 1.60 ×T_t</td></tr>
+      <tr class="total"><td class="label">实际吞吐加速</td><td><code>S</code></td><td class="num">≈ 2.0×</td></tr>
+    </tbody>
+  </table>
+
+  <p>对比一下，普通 decode 一轮花 1·T<sub>t</sub> 出 1 个 token，吞吐 1/T<sub>t</sub>；投机解码一轮花 1.60·T<sub>t</sub> 出 3.22 个 token，吞吐 2.01/T<sub>t</sub>——这就是 H100 上一台 70B 服务用 8B 起草能拿到的<em>真实</em>提升量级。生产里再叠加 prompt-cache、tree-attention（一次起草成多条候选树），上限可以再往上推到 3×。</p>
+
+  <div class="insight"><strong>注意.</strong> 这一切的前提是 target 的 verify 步本来就 memory-bound——也就是 batch 还没把 GPU 算力打满。一旦做了大批量 continuous batching，verify 已经接近 compute-bound，γ 个 token 的 verify 不再“免费”，投机解码的红利会被压缩甚至消失。</div>
+</section>
+
+<!-- ========================= V ========================= -->
+<section class="section" id="s5">
+  <div class="section-head"><div class="section-num">V.</div><h2>要记住的</h2></div>
+
+  <div class="remember">
+    <p>投机解码不省 FLOPs，<em>它换的是被浪费的 FLOPs</em>。decode 阶段 GPU 算力闲置，所以 verify γ 个 token 的代价≈1 个，这才是它能赚的本质。</p>
+    <p>两个旋钮——<code>α</code>（接受率）和 <code>c</code>（起草成本比）——决定了最佳 <code>γ*</code>。α 高就敢押大 γ；c 高就被迫缩短 γ。</p>
+    <p>同家族对齐的 draft（蒸馏 / EAGLE / Medusa）能把 α 从 ~0.5 推到 ~0.8，是工程上最大的杠杆，比调 γ 更值得花力气。</p>
+    <p>大 batch + continuous batching 会吃掉投机解码的红利。低延迟单流场景下它收益最大；高吞吐多流场景下要谨慎评估，甚至可能亏。</p>
+    <p>生产实现里要看 tree-style speculation（一次起草多分支）和 self-speculation（target 自己当 draft，如 Medusa），它们的本质都还是 § III 的那条公式——只是 α 和 c 的取值变了。</p>
+  </div>
+
+  <p style="margin-top:32px;color:var(--ink-soft);font-style:italic">下一道门：当多流并发把 verify 推到 compute-bound 时，怎样在<em>批级</em>而不是<em>请求级</em>上设计投机？这要把 § III 的公式重写成 batch 维度——下一课见。</p>
+</section>
+
+<div class="footer">
+  <span>GTS · AI Infra Daily</span>
+  <span>2026-04-29 · Speculative Decoding</span>
+</div>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ============================================================
+// Fig. 1 — bottleneck visualization (HBM vs compute time)
+// ============================================================
+function drawBottleneck(){
+  const cv = document.getElementById('cv-bottleneck');
+  if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = 220;
+  cv.width = W*dpr; cv.height = H*dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+
+  const accent = '#a8322d', sage='#6c7d5a', muted='#8a847b', rule='rgba(26,25,24,0.14)', ink='#1a1918', inkSoft='#3d3933';
+
+  // headline labels
+  ctx.font = "11px 'Instrument Sans', sans-serif";
+  ctx.fillStyle = muted;
+  ctx.textBaseline = 'top';
+  ctx.fillText('一次 decode step 的耗时分解', 8, 8);
+
+  // bars
+  const padL = 130, padR = 24, padT = 50;
+  const rowH = 38, gap = 18;
+  const barW = W - padL - padR;
+
+  function row(y, label, hbmFrac, gpuFrac){
+    ctx.font = "12px 'Source Serif 4', serif";
+    ctx.fillStyle = inkSoft;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
+    ctx.fillText(label, padL-12, y+rowH/2);
+    ctx.textAlign = 'left';
+
+    // outline
+    ctx.strokeStyle = rule;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padL+0.5, y+0.5, barW, rowH);
+
+    // HBM fill (oxblood)
+    const hbmW = barW * hbmFrac;
+    ctx.fillStyle = accent;
+    ctx.fillRect(padL, y, hbmW, rowH);
+    // compute (sage)
+    ctx.fillStyle = sage;
+    ctx.fillRect(padL+hbmW, y, barW*gpuFrac, rowH);
+    // idle striped
+    const idleStart = padL+hbmW+barW*gpuFrac;
+    const idleW = barW - hbmW - barW*gpuFrac;
+    if(idleW > 1){
+      ctx.fillStyle = '#f3efe5';
+      ctx.fillRect(idleStart, y, idleW, rowH);
+      // hatch
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(idleStart, y, idleW, rowH);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(138,132,123,0.45)';
+      ctx.lineWidth = 1;
+      for(let x=idleStart-rowH; x<idleStart+idleW+rowH; x+=6){
+        ctx.beginPath();
+        ctx.moveTo(x, y+rowH);
+        ctx.lineTo(x+rowH, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // % labels
+    ctx.font = "10.5px 'JetBrains Mono', monospace";
+    ctx.fillStyle = '#faf8f3';
+    ctx.textBaseline = 'middle';
+    if(hbmW > 40){
+      ctx.fillText(Math.round(hbmFrac*100)+'%', padL+6, y+rowH/2);
+    }
+  }
+
+  row(padT, 'Decode 1 token', 0.78, 0.10);
+  row(padT+rowH+gap, 'Decode γ token (并行)', 0.80, 0.18);
+
+  // legend
+  const ly = padT + 2*rowH + gap + 24;
+  ctx.font = "11px 'Instrument Sans', sans-serif";
+  ctx.textBaseline = 'middle';
+  function chip(x, color, label){
+    ctx.fillStyle = color;
+    ctx.fillRect(x, ly-5, 10, 10);
+    ctx.fillStyle = inkSoft;
+    ctx.fillText(label, x+16, ly);
+    return x + 16 + ctx.measureText(label).width + 22;
+  }
+  let cx = padL;
+  cx = chip(cx, accent, 'HBM 搬权重 (memory-bound)');
+  cx = chip(cx, sage,   'GPU 算 (compute)');
+  // hatched legend chip
+  ctx.fillStyle = '#f3efe5';
+  ctx.fillRect(cx, ly-5, 10, 10);
+  ctx.strokeStyle = 'rgba(138,132,123,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx,ly+5); ctx.lineTo(cx+10,ly-5); ctx.stroke();
+  ctx.fillStyle = inkSoft;
+  ctx.fillText('idle', cx+16, ly);
+}
+
+// ============================================================
+// Fig. 2 — timeline animation (vanilla vs speculative)
+// ============================================================
+const Timeline = (function(){
+  const cv = document.getElementById('cv-timeline');
+  let ctx, W, H, raf=null, t0=null, playing=false;
+  const accent='#a8322d', sage='#6c7d5a', muted='#8a847b', rule='rgba(26,25,24,0.14)', ink='#1a1918', inkSoft='#3d3933', blueSoft='#7a93b3';
+
+  // pre-rolled outcomes for the speculative track
+  // structure: [{accepted: int 0..gamma, gamma: int}]
+  const gamma = 5;
+  const rounds = [
+    {a:5,g:5}, {a:3,g:5}, {a:5,g:5}, {a:2,g:5}, {a:4,g:5}, {a:5,g:5}
+  ];
+  const T_t = 1.0;          // verify / vanilla per token
+  const c   = 0.12;         // T_d / T_t
+  // scale
+  let pxPerT = 22;          // px per T_t
+
+  function init(){
+    if(!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    W = cv.clientWidth; H = 280;
+    cv.width = W*dpr; cv.height = H*dpr;
+    ctx = cv.getContext('2d');
+    ctx.scale(dpr,dpr);
+    // calc total time of speculative timeline
+    let totalSpec = 0;
+    rounds.forEach(r=>{ totalSpec += r.g*c + 1; });
+    // vanilla outputs same number of tokens
+    let totalToks = 0; rounds.forEach(r=>{ totalToks += r.a + 1; });
+    // map: width = max(totalSpec, totalToks*1.0) → fit
+    const longer = Math.max(totalSpec, totalToks);
+    pxPerT = (W - 130 - 24) / longer;
+    draw(0);
+  }
+
+  function drawAxis(y, label, sub){
+    ctx.font = "12px 'Source Serif 4', serif";
+    ctx.fillStyle = inkSoft;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
+    ctx.fillText(label, 122, y+16);
+    ctx.font = "10.5px 'Instrument Sans', sans-serif";
+    ctx.fillStyle = muted;
+    ctx.fillText(sub, 122, y+32);
+    ctx.textAlign = 'left';
+    // baseline
+    ctx.strokeStyle = rule;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(130, y+24); ctx.lineTo(W-24, y+24); ctx.stroke();
+  }
+
+  function tokenBox(x, y, w, h, fill, stroke){
+    ctx.fillStyle = fill;
+    ctx.fillRect(x,y,w,h);
+    if(stroke){
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+    }
+  }
+
+  function draw(elapsed){
+    if(!ctx) return;
+    ctx.clearRect(0,0,W,H);
+
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.fillStyle = muted;
+    ctx.textBaseline = 'top';
+    ctx.fillText('两条时间轴（同一段 token 序列）', 8, 8);
+
+    // count total tokens to be generated (from rounds)
+    let totalToks = 0; rounds.forEach(r=>{ totalToks += r.a + 1; });
+
+    // ===== vanilla track =====
+    const yV = 60;
+    drawAxis(yV-22, 'Vanilla', '1 step → 1 token');
+    // draw token boxes that have appeared given elapsed time
+    let xV = 130;
+    const vanillaH = 26;
+    const vanillaY = yV + 12;
+    let elapsedV = elapsed; // both tracks start together
+    for(let i=0;i<totalToks;i++){
+      const start = i*T_t;
+      const end = (i+1)*T_t;
+      const x = 130 + start*pxPerT;
+      const w = T_t*pxPerT - 2;
+      if(elapsedV >= end){
+        tokenBox(x, vanillaY, w, vanillaH, '#1f3a5f', null);
+      } else if(elapsedV > start){
+        const frac = (elapsedV - start)/T_t;
+        tokenBox(x, vanillaY, w*frac, vanillaH, '#1f3a5f', null);
+        // outline of the full one
+        ctx.strokeStyle = rule;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x+0.5,vanillaY+0.5,w-1,vanillaH-1);
+      } else {
+        ctx.strokeStyle = rule;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x+0.5,vanillaY+0.5,w-1,vanillaH-1);
+      }
+    }
+
+    // ===== speculative track =====
+    const yS = 170;
+    drawAxis(yS-22, 'Speculative', 'γ draft → 1 verify');
+    const draftH = 22;
+    const verifyH = 26;
+    const draftY = yS + 14;
+    const verifyY = yS + 12;
+
+    let cursor = 0;
+    rounds.forEach((r)=>{
+      // γ draft tokens
+      for(let i=0;i<r.g;i++){
+        const start = cursor + i*c;
+        const end = cursor + (i+1)*c;
+        const x = 130 + start*pxPerT;
+        const w = c*pxPerT - 1;
+        const accepted = i < r.a;
+        const fill = accepted ? '#6c7d5a' : '#c5746f';
+        if(elapsed >= end){
+          tokenBox(x, draftY, w, draftH, fill, null);
+        } else if(elapsed > start){
+          const frac = (elapsed - start)/c;
+          tokenBox(x, draftY, w*frac, draftH, '#b8823a', null);
+          ctx.strokeStyle = rule;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x+0.5,draftY+0.5,w-1,draftH-1);
+        } else {
+          ctx.strokeStyle = rule;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x+0.5,draftY+0.5,w-1,draftH-1);
+        }
+      }
+      cursor += r.g*c;
+
+      // verify
+      const vStart = cursor, vEnd = cursor+1;
+      const x = 130 + vStart*pxPerT;
+      const w = T_t*pxPerT - 2;
+      if(elapsed >= vEnd){
+        tokenBox(x, verifyY, w, verifyH, '#1f3a5f', null);
+        // overlay hash showing accepted count
+        ctx.fillStyle = '#faf8f3';
+        ctx.font = "10.5px 'JetBrains Mono', monospace";
+        ctx.textBaseline = 'middle';
+        ctx.fillText('+'+(r.a+1)+' tok', x+6, verifyY+verifyH/2);
+      } else if(elapsed > vStart){
+        const frac = (elapsed - vStart)/T_t;
+        tokenBox(x, verifyY, w*frac, verifyH, '#1f3a5f', null);
+        ctx.strokeStyle = rule;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x+0.5,verifyY+0.5,w-1,verifyH-1);
+      } else {
+        ctx.strokeStyle = rule;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x+0.5,verifyY+0.5,w-1,verifyH-1);
+      }
+      cursor += 1;
+    });
+
+    // legend
+    const ly = 248;
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.textBaseline = 'middle';
+    function chip(x, color, label){
+      ctx.fillStyle = color;
+      ctx.fillRect(x, ly-5, 10, 10);
+      ctx.fillStyle = inkSoft;
+      ctx.fillText(label, x+16, ly);
+      return x + 16 + ctx.measureText(label).width + 22;
+    }
+    let cx = 130;
+    cx = chip(cx, '#1f3a5f', 'verify / vanilla');
+    cx = chip(cx, '#6c7d5a', 'draft accepted');
+    cx = chip(cx, '#c5746f', 'draft rejected');
+  }
+
+  function loop(ts){
+    if(!t0) t0 = ts;
+    const elapsed = (ts - t0) / 1000 * 1.6; // 1.6 T_t per real-second
+    let totalSpec = 0; rounds.forEach(r=>{ totalSpec += r.g*c + 1; });
+    let totalToks = 0; rounds.forEach(r=>{ totalToks += r.a + 1; });
+    const longer = Math.max(totalSpec, totalToks);
+    if(elapsed >= longer + 0.4){
+      draw(longer);
+      playing = false;
+      const lbl = document.getElementById('btn-play-label');
+      if(lbl) lbl.textContent = '重播';
+      raf = null;
+      return;
+    }
+    draw(elapsed);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function play(){
+    if(playing) return;
+    t0 = null;
+    playing = true;
+    const lbl = document.getElementById('btn-play-label');
+    if(lbl) lbl.textContent = '播放中…';
+    raf = requestAnimationFrame(loop);
+  }
+
+  return { init, play };
+})();
+
+// ============================================================
+// Fig. 3 — speedup curve over γ for current α, c
+// ============================================================
+const Curve = (function(){
+  const cv = document.getElementById('cv-curve');
+  let ctx, W, H;
+  const accent='#a8322d', sage='#6c7d5a', muted='#8a847b', rule='rgba(26,25,24,0.14)', ink='#1a1918', inkSoft='#3d3933', blue='#1f3a5f';
+
+  function expectedN(alpha, gamma){
+    if(Math.abs(1-alpha) < 1e-9) return gamma+1;
+    return (1 - Math.pow(alpha, gamma+1)) / (1 - alpha);
+  }
+  function speedup(alpha, gamma, c){
+    return expectedN(alpha, gamma) / (gamma*c + 1);
+  }
+
+  function init(){
+    if(!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    W = cv.clientWidth; H = 280;
+    cv.width = W*dpr; cv.height = H*dpr;
+    ctx = cv.getContext('2d');
+    ctx.scale(dpr,dpr);
+  }
+
+  function draw(alpha, gamma, c){
+    if(!ctx) return;
+    ctx.clearRect(0,0,W,H);
+
+    // axes
+    const padL = 56, padR = 24, padT = 26, padB = 44;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    // sample
+    const gMax = 12;
+    const samples = [];
+    let yMax = 0;
+    for(let g=1; g<=gMax; g+=0.05){
+      const s = speedup(alpha, g, c);
+      samples.push([g, s]);
+      if(s > yMax) yMax = s;
+    }
+    yMax = Math.max(2.0, Math.ceil(yMax * 1.15 * 2)/2);
+
+    // y grid
+    ctx.strokeStyle = rule;
+    ctx.lineWidth = 1;
+    ctx.font = "10.5px 'JetBrains Mono', monospace";
+    ctx.fillStyle = muted;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
+    const yStep = yMax > 4 ? 1 : 0.5;
+    for(let yv=0; yv<=yMax+1e-6; yv+=yStep){
+      const y = padT + plotH - (yv/yMax)*plotH;
+      ctx.beginPath();
+      ctx.moveTo(padL, y); ctx.lineTo(W-padR, y);
+      ctx.strokeStyle = yv === 1 ? 'rgba(26,25,24,0.32)' : rule;
+      ctx.stroke();
+      ctx.fillStyle = yv === 1 ? inkSoft : muted;
+      ctx.fillText(yv.toFixed(yStep<1?1:0)+'×', padL-6, y);
+    }
+
+    // x ticks
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for(let g=1; g<=gMax; g++){
+      const x = padL + ((g-1)/(gMax-1))*plotW;
+      ctx.fillStyle = muted;
+      ctx.fillText(g, x, padT + plotH + 8);
+      // tick
+      ctx.strokeStyle = rule;
+      ctx.beginPath(); ctx.moveTo(x, padT+plotH); ctx.lineTo(x, padT+plotH+3); ctx.stroke();
+    }
+
+    // axis labels
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.fillStyle = inkSoft;
+    ctx.textAlign = 'center';
+    ctx.fillText('γ  (起草长度)', padL + plotW/2, H-14);
+    ctx.save();
+    ctx.translate(16, padT + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('S(α, γ)  加速比', 0, 0);
+    ctx.restore();
+
+    // line
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    samples.forEach((p,i)=>{
+      const x = padL + ((p[0]-1)/(gMax-1))*plotW;
+      const y = padT + plotH - (Math.min(p[1], yMax)/yMax)*plotH;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // peak γ*
+    let best = {g:1, s:speedup(alpha,1,c)};
+    for(let g=1; g<=gMax; g++){
+      const s = speedup(alpha,g,c);
+      if(s > best.s) best = {g, s};
+    }
+    const xstar = padL + ((best.g-1)/(gMax-1))*plotW;
+    ctx.strokeStyle = 'rgba(26,25,24,0.30)';
+    ctx.setLineDash([3,4]);
+    ctx.beginPath();
+    ctx.moveTo(xstar, padT); ctx.lineTo(xstar, padT+plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "10.5px 'JetBrains Mono', monospace";
+    ctx.fillStyle = inkSoft;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('γ* = '+best.g, xstar, padT+4);
+
+    // current point
+    const cx = padL + ((gamma-1)/(gMax-1))*plotW;
+    const cs = speedup(alpha, gamma, c);
+    const cy = padT + plotH - (Math.min(cs,yMax)/yMax)*plotH;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#faf8f3';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // current value box
+    ctx.font = "11px 'JetBrains Mono', monospace";
+    ctx.fillStyle = inkSoft;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const txt = 'γ='+gamma+'  →  '+cs.toFixed(2)+'×';
+    const tw = ctx.measureText(txt).width;
+    const tx = Math.min(cx + 12, W - padR - tw - 8);
+    ctx.fillText(txt, tx, cy - 12);
+  }
+
+  return { init, draw, expectedN, speedup };
+})();
+
+// ============================================================
+// wire up controls
+// ============================================================
+function wire(){
+  const ra = document.getElementById('r-alpha');
+  const rg = document.getElementById('r-gamma');
+  const rc = document.getElementById('r-cost');
+  const va = document.getElementById('v-alpha');
+  const vg = document.getElementById('v-gamma');
+  const vc = document.getElementById('v-cost');
+  const mEN = document.getElementById('m-en');
+  const mET = document.getElementById('m-et');
+  const mSP = document.getElementById('m-sp');
+
+  function update(){
+    const alpha = parseFloat(ra.value);
+    const gamma = parseInt(rg.value, 10);
+    const c = parseFloat(rc.value);
+    va.textContent = alpha.toFixed(2);
+    vg.textContent = gamma;
+    vc.textContent = c.toFixed(2);
+    const en = Curve.expectedN(alpha, gamma);
+    const et = gamma*c + 1;
+    const sp = en/et;
+    mEN.innerHTML = en.toFixed(2)+'<span class="unit"> tok</span>';
+    mET.innerHTML = et.toFixed(2)+'<span class="unit"> ×T_t</span>';
+    mSP.innerHTML = sp.toFixed(2)+'<span class="unit">×</span>';
+    Curve.draw(alpha, gamma, c);
+  }
+  [ra,rg,rc].forEach(r=>r.addEventListener('input', update));
+  update();
+
+  document.getElementById('btn-play').addEventListener('click', ()=>Timeline.play());
+}
+
+function boot(){
+  drawBottleneck();
+  Timeline.init();
+  Curve.init();
+  wire();
+  // auto-kick the timeline once after a short pause
+  setTimeout(()=>Timeline.play(), 600);
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
+
+// re-layout on resize
+let resizeTimer = null;
+window.addEventListener('resize', ()=>{
+  if(resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(()=>{
+    drawBottleneck();
+    Timeline.init();
+    Curve.init();
+    const ra = document.getElementById('r-alpha');
+    const rg = document.getElementById('r-gamma');
+    const rc = document.getElementById('r-cost');
+    Curve.draw(parseFloat(ra.value), parseInt(rg.value,10), parseFloat(rc.value));
+  }, 120);
+});
+
+})();
+</script>
+</body>
+</html>

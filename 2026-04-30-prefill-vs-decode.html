@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prefill 与 Decode — 推理时间的两副面孔</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300..900;1,300..900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #faf8f3;
+    --bg-2: #f3efe5;
+    --ink: #1a1918;
+    --ink-2: #2a2623;
+    --muted: #6b6258;
+    --rule: rgba(26, 25, 24, 0.14);
+    --rule-soft: rgba(26, 25, 24, 0.07);
+    --accent: #a8322d;          /* oxblood */
+    --accent-soft: #c5534f;
+    --blue: #1f3a5f;            /* prussian */
+    --blue-soft: #6b89a8;
+    --sage: #8a9a6b;
+    --ochre: #b8823a;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.72;
+    font-feature-settings: "onum", "kern";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 64px 32px 120px 32px;
+  }
+
+  /* ── masthead ─────────────────────────────── */
+  .masthead {
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0 12px 0;
+    margin-bottom: 56px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .masthead .title-mark { color: var(--accent); font-weight: 600; }
+
+  h1.display {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 400;
+    font-size: 46px;
+    line-height: 1.12;
+    letter-spacing: -0.012em;
+    margin: 0 0 18px 0;
+    color: var(--ink);
+  }
+  h1.display em { font-style: italic; color: var(--accent); }
+  .dek {
+    font-family: 'Source Serif 4', serif;
+    font-style: italic;
+    font-size: 19px;
+    color: var(--ink-2);
+    max-width: 640px;
+    margin: 0 0 28px 0;
+    line-height: 1.55;
+  }
+  .byline {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 48px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* ── nav ──────────────────────────────────── */
+  nav.toc {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: -28px 0 56px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 22px;
+  }
+  nav.toc a {
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 1px;
+    transition: color .2s ease, border-color .2s ease;
+  }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+  nav.toc .num {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink);
+    margin-right: 6px;
+    font-weight: 500;
+  }
+
+  /* ── sections ─────────────────────────────── */
+  section { margin: 72px 0; scroll-margin-top: 24px; }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    border-top: 1px solid var(--rule);
+    padding-top: 22px;
+    margin-bottom: 24px;
+  }
+  .sec-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    min-width: 36px;
+  }
+  .sec-title {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 500;
+    font-size: 26px;
+    line-height: 1.25;
+    margin: 0;
+    color: var(--ink);
+  }
+  .sec-dek {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 4px 0 0 0;
+  }
+
+  p { margin: 0 0 18px 0; }
+  p code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.92em;
+    background: var(--bg-2);
+    padding: 1px 5px;
+    border-radius: 2px;
+    letter-spacing: 0.01em;
+  }
+  strong { font-weight: 600; color: var(--ink); }
+
+  .insight {
+    border-left: 2px solid var(--accent);
+    padding: 4px 0 4px 18px;
+    margin: 24px 0 28px 0;
+    font-style: italic;
+    color: var(--ink-2);
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .insight .label {
+    display: block;
+    font-family: 'Instrument Sans', sans-serif;
+    font-style: normal;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .figure {
+    margin: 28px 0 22px 0;
+  }
+  .figure canvas {
+    display: block;
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--rule);
+  }
+  .caption {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .caption .figlabel {
+    color: var(--ink);
+    font-weight: 500;
+    margin-right: 8px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── controls ─────────────────────────────── */
+  .controls {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    padding: 18px 22px;
+    margin: 16px 0 8px 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 32px;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 6px; }
+  .ctrl-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .ctrl label {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ctrl .val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .ctrl .val .unit { color: var(--muted); margin-left: 3px; font-weight: 400; }
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 18px;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 1px; background: var(--ink); border: none;
+  }
+  input[type=range]::-moz-range-track {
+    height: 1px; background: var(--ink); border: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    margin-top: -7px;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .play-btn {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--ink);
+    padding: 9px 18px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: background .2s ease, color .2s ease;
+  }
+  .play-btn:hover { background: var(--ink); color: var(--bg); }
+  .play-btn .glyph {
+    width: 9px; height: 9px;
+    display: inline-block;
+    background: var(--accent);
+  }
+  .play-btn:hover .glyph { background: var(--bg); }
+
+  .row-buttons { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+  .row-buttons .hint {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── readout / tables ─────────────────────── */
+  .readout {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    margin: 18px 0 8px 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .readout .cell {
+    padding: 14px 16px;
+    border-right: 1px solid var(--rule-soft);
+  }
+  .readout .cell:last-child { border-right: none; }
+  .readout .k {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .readout .v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .readout .v .unit {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: 4px;
+    font-weight: 400;
+  }
+  .readout .v.accent { color: var(--accent); }
+  .readout .v.blue   { color: var(--blue); }
+
+  table.envelope {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 18px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+  table.envelope th, table.envelope td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  table.envelope th {
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+  }
+  table.envelope td.lab {
+    font-family: 'Source Serif 4', serif;
+    font-size: 15px;
+    color: var(--ink-2);
+  }
+  table.envelope td.acc { color: var(--accent); }
+  table.envelope td.blu { color: var(--blue); }
+
+  /* ── compare ─────────────────────────────── */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--rule);
+    margin: 22px 0 10px 0;
+  }
+  .compare .col { padding: 22px 22px 24px 22px; }
+  .compare .col + .col { border-left: 1px solid var(--rule); }
+  .compare h3 {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 500;
+    font-size: 18px;
+    margin: 0 0 4px 0;
+    color: var(--ink);
+  }
+  .compare .col.prefill h3 span { color: var(--accent); }
+  .compare .col.decode  h3 span { color: var(--blue);  }
+  .compare .col .tag {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: block;
+  }
+  .compare ul {
+    margin: 0; padding: 0;
+    list-style: none;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .compare li {
+    padding: 6px 0 6px 18px;
+    position: relative;
+  }
+  .compare li::before {
+    content: "§";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    font-family: 'Source Serif 4', serif;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── closer ───────────────────────────────── */
+  .remember {
+    margin-top: 56px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+  }
+  .remember h2 {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 500;
+    font-size: 22px;
+    margin: 0 0 18px 0;
+  }
+  .remember ol {
+    counter-reset: rem;
+    list-style: none;
+    padding: 0; margin: 0;
+  }
+  .remember ol li {
+    counter-increment: rem;
+    padding: 10px 0 10px 38px;
+    position: relative;
+    font-size: 16px;
+    line-height: 1.65;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .remember ol li:last-child { border-bottom: none; }
+  .remember ol li::before {
+    content: counter(rem, decimal-leading-zero);
+    position: absolute;
+    left: 0; top: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+
+  .colophon {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  @media (max-width: 720px) {
+    .controls { grid-template-columns: 1fr; }
+    .compare  { grid-template-columns: 1fr; }
+    .compare .col + .col { border-left: none; border-top: 1px solid var(--rule); }
+    .readout  { grid-template-columns: 1fr 1fr; }
+    h1.display { font-size: 36px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01s !important; transition-duration: 0.01s !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <span><span class="title-mark">GTS · AI INFRA</span> &nbsp;LESSON №&nbsp;03</span>
+    <span>2026 · 04 · 30</span>
+  </div>
+
+  <h1 class="display">推理时间的两副面孔 ——<br/><em>Prefill</em> 与 <em>Decode</em> 的不对称</h1>
+  <p class="dek">同一次请求里，模型先做一段并行的"读题"，再做一段串行的"逐字回答"。这两段几乎不像同一个程序：一段被 GPU 算力卡住，一段被显存带宽卡住。理解它们的差别，是读懂 TTFT、TPOT、批处理与 KV Cache 的起点。</p>
+  <div class="byline">Editorial · Reading time ≈ 5 min · Interactive</div>
+
+  <nav class="toc">
+    <a href="#sec1"><span class="num">I</span>两段时间</a>
+    <a href="#sec2"><span class="num">II</span>Prefill：并行的算力时刻</a>
+    <a href="#sec3"><span class="num">III</span>Decode：串行的带宽时刻</a>
+    <a href="#sec4"><span class="num">IV</span>互动：拨动 Prompt 与输出</a>
+    <a href="#sec5"><span class="num">V</span>信封背面：Llama-3-70B</a>
+    <a href="#sec6"><span class="num">VI</span>记下这几条</a>
+  </nav>
+
+  <!-- ───── SECTION I ───── -->
+  <section id="sec1">
+    <div class="sec-head">
+      <div class="sec-num">I.</div>
+      <div>
+        <h2 class="sec-title">同一次请求里，藏着两段完全不同的时间</h2>
+        <p class="sec-dek">TTFT &nbsp;≠&nbsp; TPOT × N</p>
+      </div>
+    </div>
+
+    <p>当用户按下回车，LLM 推理服务把这次请求切成两段。第一段叫 <strong>Prefill</strong>：模型一次性吃下整个 prompt，把每一层的 K、V 都算出来，写进 <span class="mono">KV Cache</span>。第二段叫 <strong>Decode</strong>：模型一次只吐一个 token，每吐一个就读一遍前面所有 token 的 K/V、写一份新的 K/V 进缓存，循环到 <span class="mono">EOS</span>。</p>
+
+    <p>用户体感的两个时间，分别对应这两段：</p>
+
+    <div class="readout" style="grid-template-columns: 1fr 1fr;">
+      <div class="cell">
+        <div class="k">TTFT — Time To First Token</div>
+        <div class="v accent">≈ Prefill 时长</div>
+      </div>
+      <div class="cell">
+        <div class="k">TPOT — Time Per Output Token</div>
+        <div class="v blue">≈ 单步 Decode 时长</div>
+      </div>
+    </div>
+
+    <p>为什么把这两段放在一起讲？因为 Prefill 是 <strong>compute-bound</strong>（算力卡住），Decode 是 <strong>memory-bound</strong>（带宽卡住）。同一段 GPU、同一份权重，但瓶颈在硬件的两端。任何想优化 LLM 推理的工程决策——continuous batching、PagedAttention、speculative decoding、chunked prefill——都建立在"承认这两段不一样"这条公理上。</p>
+
+    <div class="insight">
+      <span class="label">核心观察</span>
+      Prefill 是一次"宽矩阵乘法"，吃 FLOPS。Decode 是一连串"瘦矩阵乘 + 读 KV Cache"，吃 HBM 带宽。把它们当同一件事调优，必然得到失衡的系统。
+    </div>
+  </section>
+
+  <!-- ───── SECTION II ───── -->
+  <section id="sec2">
+    <div class="sec-head">
+      <div class="sec-num">II.</div>
+      <div>
+        <h2 class="sec-title">Prefill — 一次"宽矩阵"的算力时刻</h2>
+        <p class="sec-dek">Compute-bound · arithmetic intensity 高</p>
+      </div>
+    </div>
+
+    <p>Prefill 阶段，<span class="mono">N</span> 个 prompt token 同时进入 Transformer。Q/K/V 投影是一次形状为 <span class="mono">[N, d_model] × [d_model, d_model]</span> 的矩阵乘法——<strong>所有 token 并行算</strong>。在这种大矩阵乘里，每读一字节权重，能服务多个 token 的乘加，<em>arithmetic intensity</em>（FLOPs / byte）很高，于是 GPU 的 tensor core 真正吃满了。</p>
+
+    <div class="figure">
+      <canvas id="cv-prefill" width="1640" height="380"></canvas>
+      <div class="caption"><span class="figlabel">Fig. 1</span>Prefill 把 prompt 当成一个矩形批次：所有 token 在同一步里并行通过每一层。点击播放，看一层接一层地完成。</div>
+    </div>
+    <div class="row-buttons">
+      <button class="play-btn" id="btn-prefill"><span class="glyph"></span>播放 prefill</button>
+      <span class="hint">8 个 token × 6 层 — 演示用</span>
+    </div>
+
+    <div class="insight">
+      <span class="label">为什么是 compute-bound</span>
+      权重矩阵被一次读入、被很多 token 同时使用——Roofline 上的工作点落在算力线下面。瓶颈是 GPU 的 FLOPs，加大 batch 也不会救你太多。
+    </div>
+  </section>
+
+  <!-- ───── SECTION III ───── -->
+  <section id="sec3">
+    <div class="sec-head">
+      <div class="sec-num">III.</div>
+      <div>
+        <h2 class="sec-title">Decode — 每吐一个字，都要重读一遍历史</h2>
+        <p class="sec-dek">Memory-bound · arithmetic intensity 低</p>
+      </div>
+    </div>
+
+    <p>Decode 阶段每一步只生成 <strong>一个</strong> token。这个 token 的 attention 要看到前面 <span class="mono">N + t</span> 个位置的 K 和 V——而这些 K/V 已经在 KV Cache 里。于是单步 decode 做的是：读一份权重（GB 级）+ 读一段 KV Cache（也是 GB 级）→ 算出一个 token。</p>
+
+    <p>这次的矩阵乘法形状是 <span class="mono">[1, d_model] × [d_model, d_model]</span>——<strong>瘦矩阵</strong>。读了那么多字节的权重，只服务一个 token 的乘加，arithmetic intensity 极低，工作点落在 Roofline 的"屋顶"以下、带宽线之上。GPU 的 tensor core 在等数据。</p>
+
+    <div class="figure">
+      <canvas id="cv-decode" width="1640" height="380"></canvas>
+      <div class="caption"><span class="figlabel">Fig. 2</span>Decode 像传送带：每一格只生成一个 token，下一个 token 要等上一个写完 KV 才能开始。每一步都得把所有权重和 KV 重读一遍。</div>
+    </div>
+    <div class="row-buttons">
+      <button class="play-btn" id="btn-decode"><span class="glyph"></span>播放 decode</button>
+      <span class="hint">12 步 — 注意每一步都要回头读历史</span>
+    </div>
+
+    <div class="insight">
+      <span class="label">为什么是 memory-bound</span>
+      生成 1 个 token，需要读完整套权重 + 一份 KV Cache。"读了一大堆只算了一点"，HBM 带宽先于 FLOPs 用尽。这就是为什么 batch 起来收益巨大、为什么 KV Cache 大小直接卡住吞吐。
+    </div>
+  </section>
+
+  <!-- ───── SECTION IV ───── -->
+  <section id="sec4">
+    <div class="sec-head">
+      <div class="sec-num">IV.</div>
+      <div>
+        <h2 class="sec-title">把两段时间画在一张图上</h2>
+        <p class="sec-dek">拨动 Prompt 与输出长度，看 TTFT 与生成总时间如何此消彼长</p>
+      </div>
+    </div>
+
+    <p>下面的横向时间轴用一个简化模型把 prefill 与 decode 画在同一根时间线上。左侧的红色块是 Prefill（compute-bound，时间随 prompt 长度近似线性），右侧的蓝色长条是 Decode（每个 token 时间几乎恒定）。拨动两个滑块，观察什么时候 TTFT 主导、什么时候 Decode 主导。</p>
+
+    <div class="figure">
+      <canvas id="cv-timeline" width="1640" height="280"></canvas>
+      <div class="caption"><span class="figlabel">Fig. 3</span>红色 = Prefill 阶段（<em>compute-bound</em>），蓝色 = Decode 阶段（<em>memory-bound</em>）。坐标尺寸基于 Llama-3-70B 单卡 H100 数量级。</div>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <label>Prompt tokens (N)</label>
+          <span class="val" id="lbl-prompt">512<span class="unit">tok</span></span>
+        </div>
+        <input type="range" id="rng-prompt" min="64" max="8192" value="512" step="64" />
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <label>Output tokens (T)</label>
+          <span class="val" id="lbl-out">256<span class="unit">tok</span></span>
+        </div>
+        <input type="range" id="rng-out" min="16" max="2048" value="256" step="16" />
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="cell">
+        <div class="k">TTFT (Prefill)</div>
+        <div class="v accent" id="v-ttft">—</div>
+      </div>
+      <div class="cell">
+        <div class="k">Decode 总时长</div>
+        <div class="v blue" id="v-dec">—</div>
+      </div>
+      <div class="cell">
+        <div class="k">谁主导端到端</div>
+        <div class="v" id="v-dom">—</div>
+      </div>
+    </div>
+
+    <div class="insight">
+      <span class="label">直觉</span>
+      短 prompt + 长输出 → 用户感觉"很快开始说话但慢慢出字"，瓶颈是带宽，应当 batch、压缩 KV、上 speculative decoding。<br/>
+      长 prompt + 短输出 → 用户感觉"半天才开始说话"，瓶颈是 prefill 的算力，应当 chunked prefill、prefix caching、并行 prefill。
+    </div>
+  </section>
+
+  <!-- ───── SECTION V ───── -->
+  <section id="sec5">
+    <div class="sec-head">
+      <div class="sec-num">V.</div>
+      <div>
+        <h2 class="sec-title">信封背面：Llama-3-70B 的两段时间</h2>
+        <p class="sec-dek">不是 benchmark，是数量级感觉</p>
+      </div>
+    </div>
+
+    <p>用 Llama-3-70B 的真实形状做一遍粗算：<span class="mono">L = 80</span> 层，<span class="mono">d_model = 8192</span>，<span class="mono">n_kv_heads = 8</span>，<span class="mono">head_dim = 128</span>，FP16。假设跑在一张 H100（≈ 989 TFLOPS dense FP16，HBM 带宽 ≈ 3.35 TB/s），权重总量约 <span class="mono">140 GB</span>（FP16）——单卡放不下，常见做法是 8× H100 上跑 TP=8，每卡承担 <span class="mono">≈ 17.5 GB</span> 权重 + 自己那一份 KV。下表用单步、单卡的简化数字给出 <em>数量级</em>。</p>
+
+    <table class="envelope">
+      <thead>
+        <tr><th>量</th><th>Prefill / token</th><th>Decode / token</th><th>意味着</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="lab">需要读的权重</td>
+          <td>≈ 17.5 GB（共享给 N 个 token）</td>
+          <td>≈ 17.5 GB（每步重读一次）</td>
+          <td>权重读取次数 = decode 的瓶颈</td>
+        </tr>
+        <tr>
+          <td class="lab">单 token KV 写入 (per layer, both K&amp;V)</td>
+          <td colspan="2">2 × 8 × 128 × 2 B = <span class="mono">4 KB</span> · 80 层 → <span class="mono">≈ 320 KB / token</span></td>
+          <td>1 个对话 4k tokens ≈ 1.25 GB KV</td>
+        </tr>
+        <tr>
+          <td class="lab">arithmetic intensity</td>
+          <td class="acc">高（≈ N × 数百 FLOPs/byte）</td>
+          <td class="blu">低（≈ 几 FLOPs/byte）</td>
+          <td>Roofline 两侧</td>
+        </tr>
+        <tr>
+          <td class="lab">单步 latency 数量级 (TP=8)</td>
+          <td class="acc">N=512 时 ≈ 60–120 ms</td>
+          <td class="blu">≈ 15–25 ms / token</td>
+          <td>TPOT × 输出长 = 流式延迟主体</td>
+        </tr>
+        <tr>
+          <td class="lab">batch 收益</td>
+          <td>已经吃满算力，收益小</td>
+          <td class="blu">线性可扩到 batch ≈ 数十</td>
+          <td>continuous batching 的物理基础</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>看最后一行——Decode 的 batch 收益是几乎线性的，因为多个请求可以共享同一次"读权重"。这就是为什么 vLLM、TGI、TensorRT-LLM 都在 decode 这一侧花大力气做 continuous batching：每多塞一个请求，几乎免费。Prefill 那边多塞一个请求？算力本来就吃满，没什么便宜可占。</p>
+
+    <div class="insight">
+      <span class="label">一个反直觉</span>
+      Prefill 处理 1000 个 token 比 Decode 生成 1000 个 token 快得多。一段 1k prompt 大约 100 ms 出第一字；之后再生成 1k token 要 15–25 秒。同样多的"token 工作量"，时间差出两个数量级。
+    </div>
+  </section>
+
+  <!-- ───── SECTION VI ───── -->
+  <section id="sec6" class="remember">
+    <h2>VI. 记下这几条</h2>
+    <ol>
+      <li>一次 LLM 请求是<strong>两段不同性质的计算</strong>：Prefill（compute-bound）和 Decode（memory-bound）。任何把它们当同一件事的优化决策都会偏。</li>
+      <li>用户感受到的 <span class="mono">TTFT</span> 由 Prefill 决定，<span class="mono">TPOT</span> 由 Decode 单步决定。两者的优化手段几乎不重叠。</li>
+      <li>Decode 的瓶颈是<strong>"读完整套权重 + KV Cache 才生成 1 个 token"</strong>。这是 KV Cache 大小直接限制吞吐、batching 收益巨大、speculative decoding 划算的根本原因。</li>
+      <li>Prefill 的瓶颈是 GPU 的 FLOPs。<em>Chunked prefill</em>、<em>prefix caching</em>、<em>并行 prefill</em> 都在这一侧做文章；continuous batching 在这一侧帮助有限。</li>
+      <li>下次看到一条推理优化技术，先问自己：它在压 <span class="mono">TTFT</span> 还是压 <span class="mono">TPOT</span>？落到 Roofline 的哪一侧？答案不清楚的优化，多半是在解决错误的问题。</li>
+    </ol>
+    <p style="margin-top: 22px; color: var(--muted); font-style: italic;">↦ 下一站：把这两段时间放进 Roofline 模型，再放进 batching 与 PagedAttention，看吞吐和延迟如何互换。</p>
+  </section>
+
+  <div class="colophon">
+    <span>GTS AI 工作台 · DAILY INFERENCE LESSON</span>
+    <span>Set in Source Serif 4 · Instrument Sans · JetBrains Mono</span>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ───── shared canvas helpers ───── */
+function setupHiDPI(canvas) {
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width * dpr);
+  canvas.height = Math.round(parseInt(canvas.getAttribute('data-h') || canvas.height) * dpr);
+  if (!canvas.getAttribute('data-h')) canvas.setAttribute('data-h', canvas.height / dpr);
+  canvas.style.height = (canvas.height / dpr) + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: parseFloat(canvas.style.height) };
+}
+
+const COL = {
+  ink: '#1a1918',
+  muted: '#6b6258',
+  rule: 'rgba(26,25,24,0.14)',
+  ruleSoft: 'rgba(26,25,24,0.07)',
+  bg: '#ffffff',
+  bg2: '#f3efe5',
+  accent: '#a8322d',
+  accentSoft: '#c5534f',
+  blue: '#1f3a5f',
+  blueSoft: '#6b89a8'
+};
+
+/* ───── Fig 1 — Prefill simulation ───── */
+(function(){
+  const cv = document.getElementById('cv-prefill');
+  cv.setAttribute('data-h', 380);
+  let dim = setupHiDPI(cv);
+  let { ctx, w, h } = dim;
+
+  const TOKENS = 8;
+  const LAYERS = 6;
+  let progress = 0;        // 0..LAYERS, fractional
+  let raf = null;
+  let playing = false;
+
+  function layout() {
+    dim = setupHiDPI(cv);
+    ctx = dim.ctx; w = dim.w; h = dim.h;
+  }
+  window.addEventListener('resize', () => { layout(); draw(); });
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const pad = 28;
+    const titleH = 22;
+    const labelW = 88;
+    const innerW = w - pad - labelW - pad;
+    const innerH = h - pad - titleH - pad;
+
+    // top label
+    ctx.fillStyle = COL.muted;
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("LAYER ↓   TOKENS →   ( all 8 tokens advance together )", pad + labelW, pad + 2);
+
+    const cellW = innerW / TOKENS;
+    const cellH = innerH / LAYERS;
+
+    // grid + token cells
+    for (let l = 0; l < LAYERS; l++) {
+      // layer label
+      ctx.fillStyle = COL.muted;
+      ctx.font = "11px 'JetBrains Mono', monospace";
+      ctx.textAlign = "right";
+      ctx.fillText("layer " + (l+1).toString().padStart(2,'0'),
+                   pad + labelW - 12, pad + titleH + cellH * (l + 0.6));
+
+      for (let t = 0; t < TOKENS; t++) {
+        const x = pad + labelW + t * cellW;
+        const y = pad + titleH + l * cellH;
+        const cw = cellW - 6;
+        const ch = cellH - 6;
+
+        // base
+        ctx.fillStyle = COL.bg2;
+        ctx.fillRect(x, y, cw, ch);
+
+        const layerProg = progress - l;   // 0..1 if this layer is active
+        if (layerProg >= 1) {
+          // done
+          ctx.fillStyle = COL.accent;
+          ctx.fillRect(x, y, cw, ch);
+        } else if (layerProg > 0) {
+          // partial — sweep across tokens BUT all tokens fill simultaneously
+          // (key teaching: prefill is parallel — they all fill at once)
+          ctx.fillStyle = COL.accentSoft;
+          const fillH = ch * layerProg;
+          ctx.fillRect(x, y + ch - fillH, cw, fillH);
+        }
+        // outline
+        ctx.strokeStyle = COL.rule;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
+      }
+    }
+
+    // bracket spanning all tokens for active layer
+    const activeLayer = Math.min(LAYERS - 1, Math.floor(progress));
+    if (progress > 0 && progress < LAYERS) {
+      const y = pad + titleH + activeLayer * cellH + cellH/2;
+      const x0 = pad + labelW;
+      const x1 = pad + labelW + innerW;
+      ctx.strokeStyle = COL.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x0 - 6, y - 9);
+      ctx.lineTo(x0 - 12, y);
+      ctx.lineTo(x0 - 6, y + 9);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1 + 6, y - 9);
+      ctx.lineTo(x1 + 12, y);
+      ctx.lineTo(x1 + 6, y + 9);
+      ctx.stroke();
+
+      ctx.fillStyle = COL.accent;
+      ctx.font = "10.5px 'Instrument Sans', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("PARALLEL — one big matmul", x1 + 18, y + 4);
+    }
+
+    // bottom note
+    ctx.fillStyle = COL.muted;
+    ctx.font = "italic 12px 'Source Serif 4', serif";
+    ctx.textAlign = "left";
+    ctx.fillText("一行 = 一层 Transformer · 一格 = 一个 token 的中间状态", pad + labelW, h - 10);
+  }
+
+  function loop() {
+    progress += 0.03;
+    if (progress >= LAYERS + 0.5) {
+      playing = false;
+      progress = LAYERS;
+      draw();
+      cancelAnimationFrame(raf);
+      return;
+    }
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  document.getElementById('btn-prefill').addEventListener('click', () => {
+    if (playing) {
+      cancelAnimationFrame(raf);
+      playing = false;
+      progress = 0;
+      draw();
+      return;
+    }
+    progress = 0;
+    playing = true;
+    draw();
+    raf = requestAnimationFrame(loop);
+  });
+
+  layout();
+  draw();
+})();
+
+/* ───── Fig 2 — Decode simulation ───── */
+(function(){
+  const cv = document.getElementById('cv-decode');
+  cv.setAttribute('data-h', 380);
+  let dim = setupHiDPI(cv);
+  let { ctx, w, h } = dim;
+
+  const STEPS = 12;     // generation steps
+  const PROMPT = 4;     // prefilled tokens shown on the left
+  let cursor = 0;       // how many decode steps have completed (fractional)
+  let raf = null;
+  let playing = false;
+
+  function layout() {
+    dim = setupHiDPI(cv);
+    ctx = dim.ctx; w = dim.w; h = dim.h;
+  }
+  window.addEventListener('resize', () => { layout(); draw(); });
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const pad = 28;
+    const topH = 28;
+    const cacheLabelW = 110;
+    const totalCells = PROMPT + STEPS;
+    const innerW = w - pad - cacheLabelW - pad;
+    const cellW = innerW / totalCells;
+    const cellH = 30;
+
+    const yKV = pad + topH;          // KV cache row
+    const yTok = yKV + cellH + 60;   // generated token row
+
+    // headers
+    ctx.fillStyle = COL.muted;
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("KV CACHE", pad + cacheLabelW - 12, yKV + 18);
+    ctx.fillText("OUTPUT", pad + cacheLabelW - 12, yTok + 18);
+
+    // KV cache cells
+    for (let i = 0; i < totalCells; i++) {
+      const x = pad + cacheLabelW + i * cellW;
+      const isPrompt = i < PROMPT;
+      const filled = isPrompt || (i - PROMPT) < Math.floor(cursor);
+      ctx.fillStyle = filled ? (isPrompt ? COL.bg2 : COL.blueSoft) : '#fff';
+      ctx.fillRect(x, yKV, cellW - 4, cellH);
+      ctx.strokeStyle = COL.rule;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, yKV + 0.5, cellW - 4 - 1, cellH - 1);
+
+      if (isPrompt) {
+        ctx.fillStyle = COL.muted;
+        ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("p" + (i+1), x + (cellW-4)/2, yKV + 18);
+      } else if (filled) {
+        ctx.fillStyle = '#fff';
+        ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("t" + (i - PROMPT + 1), x + (cellW-4)/2, yKV + 18);
+      }
+    }
+
+    // separator label between prompt KV and generated KV
+    const sepX = pad + cacheLabelW + PROMPT * cellW - 2;
+    ctx.strokeStyle = COL.rule;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(sepX, yKV - 12);
+    ctx.lineTo(sepX, yKV + cellH + 12);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = COL.muted;
+    ctx.font = "10.5px 'Instrument Sans', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("from prefill",
+                 pad + cacheLabelW + (PROMPT * cellW) / 2, yKV - 8);
+    ctx.fillText("appended one-by-one during decode",
+                 pad + cacheLabelW + PROMPT * cellW + (STEPS * cellW) / 2, yKV - 8);
+
+    // output tokens
+    for (let s = 0; s < STEPS; s++) {
+      const x = pad + cacheLabelW + (PROMPT + s) * cellW;
+      const filled = s < Math.floor(cursor);
+      ctx.fillStyle = filled ? COL.blue : '#fff';
+      ctx.fillRect(x, yTok, cellW - 4, cellH);
+      ctx.strokeStyle = COL.rule;
+      ctx.strokeRect(x + 0.5, yTok + 0.5, cellW - 4 - 1, cellH - 1);
+      if (filled) {
+        ctx.fillStyle = '#fff';
+        ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("t" + (s + 1), x + (cellW-4)/2, yTok + 18);
+      }
+    }
+
+    // arrow showing current step "reading" all prior KV
+    const stepIdx = Math.floor(cursor);
+    const frac = cursor - stepIdx;
+    if (cursor > 0 && cursor < STEPS && frac > 0.05) {
+      const targetX = pad + cacheLabelW + (PROMPT + stepIdx) * cellW + (cellW-4)/2;
+      const sourceCount = PROMPT + stepIdx;
+      ctx.strokeStyle = COL.accent;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < sourceCount; i++) {
+        const sx = pad + cacheLabelW + i * cellW + (cellW - 4) / 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, yKV + cellH);
+        ctx.bezierCurveTo(sx, yKV + cellH + 25,
+                          targetX, yTok - 25,
+                          targetX, yTok);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // label
+      ctx.fillStyle = COL.accent;
+      ctx.font = "10.5px 'Instrument Sans', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("step reads ALL " + sourceCount + " prior KV entries",
+                   pad + cacheLabelW, yTok + cellH + 22);
+    }
+
+    // bottom note
+    ctx.fillStyle = COL.muted;
+    ctx.font = "italic 12px 'Source Serif 4', serif";
+    ctx.textAlign = "left";
+    ctx.fillText("每一步：读完整权重 + 读所有历史 KV → 算出 1 个 token → 再写一份 KV",
+                 pad + cacheLabelW, h - 12);
+  }
+
+  function loop() {
+    cursor += 0.03;
+    if (cursor >= STEPS + 0.3) {
+      playing = false;
+      cursor = STEPS;
+      draw();
+      cancelAnimationFrame(raf);
+      return;
+    }
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  document.getElementById('btn-decode').addEventListener('click', () => {
+    if (playing) {
+      cancelAnimationFrame(raf);
+      playing = false;
+      cursor = 0;
+      draw();
+      return;
+    }
+    cursor = 0;
+    playing = true;
+    draw();
+    raf = requestAnimationFrame(loop);
+  });
+
+  layout();
+  draw();
+})();
+
+/* ───── Fig 3 — Interactive timeline ───── */
+(function(){
+  const cv = document.getElementById('cv-timeline');
+  cv.setAttribute('data-h', 280);
+  let dim = setupHiDPI(cv);
+  let { ctx, w, h } = dim;
+
+  // Simplified back-of-envelope numbers for Llama-3-70B on 8×H100 TP=8.
+  // Prefill: ~120 microseconds per prompt token (compute-bound regime,
+  //          with a fixed startup cost). Decode: ~18 ms per output token.
+  // These numbers are illustrative — they reproduce the right ratios.
+  const PREFILL_PER_TOK_MS = 0.12;   // ms / prompt token at moderate N
+  const PREFILL_BASE_MS    = 30;     // fixed prefill startup
+  const DECODE_PER_TOK_MS  = 18;     // ms / output token
+
+  const rngP = document.getElementById('rng-prompt');
+  const rngT = document.getElementById('rng-out');
+  const lblP = document.getElementById('lbl-prompt');
+  const lblT = document.getElementById('lbl-out');
+  const vTTFT = document.getElementById('v-ttft');
+  const vDec  = document.getElementById('v-dec');
+  const vDom  = document.getElementById('v-dom');
+
+  function layout() {
+    dim = setupHiDPI(cv);
+    ctx = dim.ctx; w = dim.w; h = dim.h;
+  }
+  window.addEventListener('resize', () => { layout(); draw(); });
+
+  function fmtMs(ms) {
+    if (ms < 1000) return ms.toFixed(0) + ' ms';
+    return (ms / 1000).toFixed(2) + ' s';
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const N = +rngP.value;
+    const T = +rngT.value;
+    const ttft = PREFILL_BASE_MS + PREFILL_PER_TOK_MS * N;
+    const dec  = DECODE_PER_TOK_MS * T;
+    const total = ttft + dec;
+
+    lblP.firstChild.nodeValue = N + '';
+    lblT.firstChild.nodeValue = T + '';
+    vTTFT.innerHTML = fmtMs(ttft);
+    vDec.innerHTML  = fmtMs(dec);
+
+    const dominant = ttft > dec ? 'Prefill' : (dec > ttft * 1.05 ? 'Decode' : 'Balanced');
+    vDom.innerHTML = dominant === 'Prefill'
+      ? '<span style="color:'+COL.accent+'">Prefill</span>'
+      : dominant === 'Decode'
+        ? '<span style="color:'+COL.blue+'">Decode</span>'
+        : '<span style="color:'+COL.muted+'">Balanced</span>';
+
+    // axis
+    const padL = 60, padR = 40, padT = 60, padB = 70;
+    const innerW = w - padL - padR;
+    const y = padT + 50;
+    const barH = 56;
+
+    // x scale: max possible total
+    const MAX_TOTAL = PREFILL_BASE_MS + PREFILL_PER_TOK_MS * 8192 + DECODE_PER_TOK_MS * 2048;
+    const px = (ms) => padL + innerW * (ms / MAX_TOTAL);
+
+    // axis baseline
+    ctx.strokeStyle = COL.ink;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, y + barH + 28);
+    ctx.lineTo(w - padR, y + barH + 28);
+    ctx.stroke();
+
+    // ticks
+    ctx.fillStyle = COL.muted;
+    ctx.font = "11px 'JetBrains Mono', monospace";
+    ctx.textAlign = "center";
+    [0, 5, 10, 20, 40].forEach(s => {
+      const ms = s * 1000;
+      const x = px(ms);
+      if (x > w - padR) return;
+      ctx.strokeStyle = COL.rule;
+      ctx.beginPath();
+      ctx.moveTo(x, y + barH + 28);
+      ctx.lineTo(x, y + barH + 32);
+      ctx.stroke();
+      ctx.fillText(s + 's', x, y + barH + 48);
+    });
+    ctx.textAlign = "left";
+    ctx.fillStyle = COL.muted;
+    ctx.font = "10.5px 'Instrument Sans', sans-serif";
+    ctx.fillText("WALL-CLOCK TIME →", padL, y + barH + 64);
+
+    // prefill bar
+    const xP0 = padL;
+    const xP1 = px(ttft);
+    ctx.fillStyle = COL.accent;
+    ctx.fillRect(xP0, y, xP1 - xP0, barH);
+
+    // decode bar
+    const xD0 = xP1;
+    const xD1 = px(total);
+    ctx.fillStyle = COL.blue;
+    ctx.fillRect(xD0, y, xD1 - xD0, barH);
+
+    // labels above bars
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = COL.accent;
+    ctx.fillText("PREFILL · COMPUTE-BOUND", xP0, y - 30);
+    ctx.fillStyle = COL.blue;
+    ctx.fillText("DECODE · MEMORY-BOUND", Math.min(xD0 + 4, w - padR - 200), y - 30);
+
+    // in-bar values
+    ctx.font = "12px 'JetBrains Mono', monospace";
+    ctx.fillStyle = '#fff';
+    if (xP1 - xP0 > 70) {
+      ctx.textAlign = 'left';
+      ctx.fillText(fmtMs(ttft), xP0 + 10, y + 24);
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.font = "10.5px 'Instrument Sans', sans-serif";
+      ctx.fillText("TTFT", xP0 + 10, y + 42);
+    }
+    if (xD1 - xD0 > 70) {
+      ctx.fillStyle = '#fff';
+      ctx.font = "12px 'JetBrains Mono', monospace";
+      ctx.fillText(fmtMs(dec), xD0 + 10, y + 24);
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.font = "10.5px 'Instrument Sans', sans-serif";
+      ctx.fillText(T + " tok × " + DECODE_PER_TOK_MS + " ms", xD0 + 10, y + 42);
+    }
+
+    // first-token marker
+    ctx.strokeStyle = COL.ink;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xP1, y - 8);
+    ctx.lineTo(xP1, y + barH + 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = COL.ink;
+    ctx.font = "10.5px 'Instrument Sans', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.fillText("↓ first token emitted", xP1, y - 12);
+
+    // total
+    ctx.textAlign = "right";
+    ctx.fillStyle = COL.muted;
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.fillText("END-TO-END  " + fmtMs(total), w - padR, y - 30);
+  }
+
+  rngP.addEventListener('input', draw);
+  rngT.addEventListener('input', draw);
+
+  layout();
+  draw();
+})();
+</script>
+</body>
+</html>

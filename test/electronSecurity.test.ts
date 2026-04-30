@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getContentSecurityPolicy,
   getSecureWebPreferences,
+  isValidAppTheme,
   isExternalLinkSafeToOpen,
   isValidStudyStatus
 } from '../src/main/security';
@@ -48,6 +49,13 @@ describe('Electron security defaults', () => {
     expect(isValidStudyStatus('in_progress')).toBe(true);
     expect(isValidStudyStatus('completed')).toBe(true);
     expect(isValidStudyStatus('done')).toBe(false);
+  });
+
+  it('validates app themes before IPC writes', () => {
+    expect(isValidAppTheme('light')).toBe(true);
+    expect(isValidAppTheme('dark')).toBe(true);
+    expect(isValidAppTheme('system')).toBe(false);
+    expect(isValidAppTheme('')).toBe(false);
   });
 
   it('only allows http(s) URLs to be forwarded to the system browser', () => {

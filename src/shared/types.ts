@@ -2,6 +2,12 @@ export type StudyStatus = 'not_started' | 'in_progress' | 'completed';
 
 export type SourceConfidence = 'high' | 'medium' | 'low';
 
+export type AppTheme = 'light' | 'dark';
+
+export interface AppSettings {
+  theme: AppTheme;
+}
+
 /**
  * 单条权威来源记录。每条具体的事实断言（型号名、规格、数值、命名）
  * 在 body_md 里出现时，理想情况下应该有一条 TopicSource 与之对应。

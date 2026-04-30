@@ -102,9 +102,11 @@ let seedReloadCallback: ((event: SeedReloadEvent) => void) | null = null;
 
 beforeEach(() => {
   seedReloadCallback = null;
+  document.documentElement.removeAttribute('data-theme');
   window.learning = {
     getOutline: vi.fn().mockResolvedValue(outline),
     getProgress: vi.fn().mockResolvedValue(progress),
+    getSettings: vi.fn().mockResolvedValue({ theme: 'light' }),
     getTopic: vi.fn().mockImplementation((id: string) =>
       Promise.resolve(id === 'T02' ? t02Topic : topic)
     ),
@@ -113,6 +115,7 @@ beforeEach(() => {
       mainTrack: ['T01', 'T02']
     }),
     updateTopicStatus: vi.fn().mockResolvedValue({ ...topic, status: 'completed' }),
+    updateTheme: vi.fn().mockImplementation((theme: string) => Promise.resolve({ theme })),
     onSeedReloaded: vi.fn().mockImplementation((callback: (event: SeedReloadEvent) => void) => {
       seedReloadCallback = callback;
       return vi.fn();
@@ -138,6 +141,43 @@ describe('App', () => {
     const toc = screen.getByRole('region', { name: '本节目录' });
     expect(within(toc).getByRole('link', { name: '核心判断' })).toHaveAttribute('href', '#section-1-核心判断');
     expect(screen.getByRole('region', { name: '学习检查点' })).toBeInTheDocument();
+  });
+
+  it('loads persisted theme settings and applies them to the document', async () => {
+    vi.mocked(window.learning.getSettings).mockResolvedValue({ theme: 'dark' });
+
+    render(<App />);
+
+    await screen.findByText('Knowledge Workspace');
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    });
+    expect(window.learning.getSettings).toHaveBeenCalled();
+  });
+
+  it('falls back to light theme when the settings IPC is temporarily unavailable', async () => {
+    vi.mocked(window.learning.getSettings).mockRejectedValue(new Error("No handler registered for 'learning:getSettings'"));
+
+    render(<App />);
+
+    expect(await screen.findByText('Knowledge Workspace')).toBeInTheDocument();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('updates the persisted theme from the settings menu', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText('Knowledge Workspace');
+
+    await user.click(screen.getByRole('button', { name: '设置' }));
+    const menu = screen.getByRole('menu', { name: '主题设置' });
+    await user.click(within(menu).getByRole('button', { name: '深色' }));
+
+    await waitFor(() => {
+      expect(window.learning.updateTheme).toHaveBeenCalledWith('dark');
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    });
   });
 
   it('reloads the current topic when the development seed file changes', async () => {

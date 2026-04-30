@@ -2,9 +2,9 @@
   width: 100%;
   height: calc(100vh - 78px);
   background:
-    linear-gradient(90deg, rgba(77, 238, 234, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(96, 165, 250, 0.035) 1px, transparent 1px),
-    #050a13;
+    linear-gradient(90deg, rgba(var(--teal-rgb), 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(var(--blue-rgb), 0.06) 1px, transparent 1px),
+    var(--bg);
   background-size: 42px 42px, 42px 42px, auto;
 }
 
@@ -17,20 +17,20 @@
 }
 
 .roadmap-root .react-flow__controls {
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow);
 }
 
 .roadmap-root .react-flow__controls button,
 .roadmap-root .react-flow__minimap {
-  border: 1px solid rgba(118, 161, 214, 0.22);
-  background: rgba(13, 21, 36, 0.9);
-  color: #c5d3e5;
-  fill: #c5d3e5;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--soft);
+  fill: var(--soft);
 }
 
 .roadmap-root .react-flow__controls button:hover {
-  background: rgba(77, 238, 234, 0.12);
-  color: #4deeea;
+  background: rgba(var(--teal-rgb), 0.12);
+  color: var(--teal);
 }
 
 .roadmap-root .react-flow__controls button svg {
@@ -39,22 +39,22 @@
 
 .roadmap-root .react-flow__minimap {
   border-radius: 8px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow);
 }
 
 .roadmap-root .react-flow__minimap-mask {
-  fill: rgba(5, 10, 19, 0.72);
+  fill: rgba(var(--neutral-rgb), 0.18);
 }
 
 .roadmap-root .react-flow__edge-path {
-  stroke: rgba(148, 163, 184, 0.48);
+  stroke: rgba(var(--neutral-rgb), 0.48);
   stroke-width: 1.5;
 }
 
 .roadmap-root .react-flow__edge.main-track .react-flow__edge-path {
-  stroke: #facc15;
+  stroke: var(--amber);
   stroke-width: 2.4;
-  filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.52));
+  filter: drop-shadow(0 0 8px rgba(var(--amber-rgb), 0.42));
   animation: roadmap-pulse 2.6s ease-in-out infinite;
 }
 
@@ -65,15 +65,15 @@
   width: 224px;
   min-height: 72px;
   padding: 12px 13px;
-  border: 1px solid rgba(118, 161, 214, 0.24);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(77, 238, 234, 0.08), transparent 44%),
-    rgba(13, 21, 36, 0.94);
-  color: #e5edf8;
+    linear-gradient(135deg, rgba(var(--teal-rgb), 0.08), transparent 44%),
+    var(--surface);
+  color: var(--soft);
   box-sizing: border-box;
   cursor: pointer;
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow);
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -81,30 +81,30 @@
 }
 
 .topic-node:hover {
-  border-color: rgba(77, 238, 234, 0.58);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28), 0 0 24px rgba(77, 238, 234, 0.18);
+  border-color: rgba(var(--teal-rgb), 0.58);
+  box-shadow: var(--shadow), 0 0 24px rgba(var(--teal-rgb), 0.18);
   transform: translateY(-2px);
 }
 
 .topic-node.status-in_progress {
-  border-color: rgba(96, 165, 250, 0.58);
+  border-color: rgba(var(--blue-rgb), 0.58);
   background:
-    linear-gradient(135deg, rgba(96, 165, 250, 0.12), transparent 44%),
-    rgba(12, 23, 42, 0.95);
+    linear-gradient(135deg, rgba(var(--blue-rgb), 0.12), transparent 44%),
+    var(--surface);
 }
 
 .topic-node.status-completed {
-  border-color: rgba(52, 211, 153, 0.58);
+  border-color: rgba(var(--green-rgb), 0.58);
   background:
-    linear-gradient(135deg, rgba(52, 211, 153, 0.12), transparent 44%),
-    rgba(8, 28, 23, 0.94);
+    linear-gradient(135deg, rgba(var(--green-rgb), 0.12), transparent 44%),
+    var(--surface);
 }
 
 .topic-node.main-track {
   box-shadow:
-    inset 0 0 0 1px rgba(250, 204, 21, 0.42),
-    0 16px 34px rgba(0, 0, 0, 0.24),
-    0 0 22px rgba(250, 204, 21, 0.14);
+    inset 0 0 0 1px rgba(var(--amber-rgb), 0.42),
+    var(--shadow),
+    0 0 22px rgba(var(--amber-rgb), 0.14);
 }
 
 .topic-node-row {
@@ -116,12 +116,12 @@
 }
 
 .topic-node-id {
-  color: #8fd7ff;
+  color: var(--blue);
   font-weight: 800;
 }
 
 .topic-node-stars {
-  color: #facc15;
+  color: var(--amber);
   letter-spacing: 1px;
   white-space: nowrap;
 }
@@ -129,7 +129,7 @@
 .topic-node-name {
   display: -webkit-box;
   overflow: hidden;
-  color: #f8fbff;
+  color: var(--text);
   font-size: 13px;
   line-height: 1.38;
   -webkit-box-orient: vertical;
@@ -143,23 +143,23 @@
   width: 100%;
   height: 100%;
   padding: 11px 14px;
-  border: 1px dashed rgba(77, 238, 234, 0.28);
+  border: 1px dashed rgba(var(--teal-rgb), 0.28);
   border-radius: 12px;
   background:
-    linear-gradient(90deg, rgba(77, 238, 234, 0.055), transparent 44%),
-    rgba(8, 15, 28, 0.48);
-  color: #f8fbff;
+    linear-gradient(90deg, rgba(var(--teal-rgb), 0.055), transparent 44%),
+    var(--subtle-bg);
+  color: var(--text);
   box-sizing: border-box;
 }
 
 .stage-group-id {
-  color: #4deeea;
+  color: var(--teal);
   font-size: 13px;
   font-weight: 800;
 }
 
 .stage-group-name {
-  color: #f1f8ff;
+  color: var(--text);
   font-size: 13px;
   font-weight: 700;
 }
@@ -167,8 +167,8 @@
 .topic-node .react-flow__handle {
   width: 7px;
   height: 7px;
-  border: 1px solid rgba(77, 238, 234, 0.44);
-  background: #0d1524;
+  border: 1px solid rgba(var(--teal-rgb), 0.44);
+  background: var(--surface-2);
 }
 
 @keyframes roadmap-pulse {

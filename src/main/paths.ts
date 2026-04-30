@@ -5,6 +5,10 @@ export function getProgressPath() {
   return resolveProgressPath(app.getPath('userData'));
 }
 
+export function getSettingsPath() {
+  return resolveSettingsPath(app.getPath('userData'));
+}
+
 function getDevResourceRoot() {
   // 开发模式下不用 process.cwd()，避免从错误目录启动时读不到 resources 导致启动失败且不弹窗。
   return app.getAppPath();
@@ -81,4 +85,8 @@ export function resolveTopicDiagramPath(
 
 export function resolveProgressPath(userDataPath: string) {
   return path.join(userDataPath, 'progress.json');
+}
+
+export function resolveSettingsPath(userDataPath: string) {
+  return path.join(userDataPath, 'settings.json');
 }

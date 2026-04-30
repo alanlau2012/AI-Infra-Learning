@@ -1,6 +1,7 @@
-import type { StudyStatus } from '../shared/types';
+import type { AppTheme, StudyStatus } from '../shared/types';
 
 export const VALID_STATUSES = new Set<StudyStatus>(['not_started', 'in_progress', 'completed']);
+export const VALID_APP_THEMES = new Set<AppTheme>(['light', 'dark']);
 
 export function getSecureWebPreferences(preload: string) {
   return {
@@ -28,6 +29,10 @@ export function getContentSecurityPolicy(isDevelopment: boolean) {
 
 export function isValidStudyStatus(status: string): status is StudyStatus {
   return VALID_STATUSES.has(status as StudyStatus);
+}
+
+export function isValidAppTheme(theme: unknown): theme is AppTheme {
+  return typeof theme === 'string' && VALID_APP_THEMES.has(theme as AppTheme);
 }
 
 /**

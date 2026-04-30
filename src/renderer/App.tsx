@@ -1,6 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import { Loader2, Moon, Settings, Sun } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  AppTheme,
   ProgressSummary,
   RoadmapGraph,
   StageWithTopics,
@@ -19,6 +20,8 @@ export default function App() {
   const [progress, setProgress] = useState<ProgressSummary | null>(null);
   const [roadmap, setRoadmap] = useState<RoadmapGraph | null>(null);
   const [view, setView] = useState<LearningView>('list');
+  const [theme, setTheme] = useState<AppTheme>('light');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
@@ -33,10 +36,11 @@ export default function App() {
     setContentError(null);
 
     try {
-      const [nextOutline, nextProgress, nextRoadmap] = await Promise.all([
+      const [nextOutline, nextProgress, nextRoadmap, nextSettings] = await Promise.all([
         window.learning.getOutline(),
         window.learning.getProgress(),
-        window.learning.getRoadmapGraph()
+        window.learning.getRoadmapGraph(),
+        loadSettingsWithFallback()
       ]);
       const topicIds = new Set(nextOutline.flatMap((stage) => stage.topics.map((item) => item.id)));
       const firstTopicId = nextOutline[0]?.topics[0]?.id ?? null;
@@ -51,6 +55,7 @@ export default function App() {
       setOutline(nextOutline);
       setProgress(nextProgress);
       setRoadmap(nextRoadmap);
+      setTheme(nextSettings.theme);
       setSelectedTopicId(nextTopicId);
       setTopic(nextTopic);
       setError(null);
@@ -68,9 +73,21 @@ export default function App() {
     }
   }, []);
 
+  async function loadSettingsWithFallback() {
+    try {
+      return await window.learning.getSettings();
+    } catch {
+      return { theme: 'light' as const };
+    }
+  }
+
   useEffect(() => {
     void loadLearningData(null, { initial: true });
   }, [loadLearningData]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     return window.learning.onSeedReloaded((event) => {
@@ -124,9 +141,20 @@ export default function App() {
     }
   }
 
+  async function updateTheme(theme: AppTheme) {
+    setContentError(null);
+    try {
+      const nextSettings = await window.learning.updateTheme(theme);
+      setTheme(nextSettings.theme);
+      setIsSettingsOpen(false);
+    } catch (nextError) {
+      setContentError(nextError instanceof Error ? nextError.message : 'Failed to update theme');
+    }
+  }
+
   if (isLoading) {
     return (
-      <main className="loading-shell">
+      <main className="loading-shell" data-theme={theme}>
         <Loader2 aria-hidden="true" className="spin" size={28} />
         <span>正在加载学习数据...</span>
       </main>
@@ -135,7 +163,7 @@ export default function App() {
 
   if (error) {
     return (
-      <main className="loading-shell error-shell">
+      <main className="loading-shell error-shell" data-theme={theme}>
         <strong>启动失败</strong>
         <span>{error}</span>
       </main>
@@ -145,7 +173,7 @@ export default function App() {
   const selectedStage = topic ? outline.find((stage) => stage.id === topic.stageId) ?? null : null;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-theme={theme}>
       <Sidebar
         outline={outline}
         selectedTopicId={selectedTopicId}
@@ -159,7 +187,15 @@ export default function App() {
               <span className="eyebrow">Knowledge Workspace</span>
               <h2>{view === 'roadmap' ? '学习路线图' : topic?.name ?? '知识点学习'}</h2>
             </div>
-            <ViewTabs view={view} onChange={setView} />
+            <div className="topbar-actions">
+              <ViewTabs view={view} onChange={setView} />
+              <ThemeSettingsMenu
+                isOpen={isSettingsOpen}
+                theme={theme}
+                onToggle={() => setIsSettingsOpen((open) => !open)}
+                onChange={(nextTheme) => void updateTheme(nextTheme)}
+              />
+            </div>
           </div>
           {progress ? <CompactProgress progress={progress} /> : null}
         </header>
@@ -187,6 +223,56 @@ export default function App() {
         )}
       </section>
     </main>
+  );
+}
+
+function ThemeSettingsMenu({
+  isOpen,
+  theme,
+  onToggle,
+  onChange
+}: {
+  isOpen: boolean;
+  theme: AppTheme;
+  onToggle: () => void;
+  onChange: (theme: AppTheme) => void;
+}) {
+  return (
+    <div className="settings-menu">
+      <button
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label="设置"
+        className="icon-button"
+        onClick={onToggle}
+        type="button"
+      >
+        <Settings aria-hidden="true" size={16} />
+      </button>
+      {isOpen ? (
+        <div className="settings-popover" role="menu" aria-label="主题设置">
+          <span>主题</span>
+          <div className="theme-switcher" role="group" aria-label="主题切换">
+            <button
+              className={theme === 'light' ? 'active' : ''}
+              onClick={() => onChange('light')}
+              type="button"
+            >
+              <Sun aria-hidden="true" size={15} />
+              浅色
+            </button>
+            <button
+              className={theme === 'dark' ? 'active' : ''}
+              onClick={() => onChange('dark')}
+              type="button"
+            >
+              <Moon aria-hidden="true" size={15} />
+              深色
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

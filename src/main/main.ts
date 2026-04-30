@@ -2,15 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from 'electron';
-import type { SeedData, SeedReloadEvent, StudyStatus } from '../shared/types';
+import type { AppTheme, SeedData, SeedReloadEvent, StudyStatus } from '../shared/types';
 import { createLearningStore, type LearningStore } from './learningStore';
-import { getProgressPath, getSeedDataPath, getTopicDiagramPath } from './paths';
+import { getProgressPath, getSeedDataPath, getSettingsPath, getTopicDiagramPath } from './paths';
 import {
   getContentSecurityPolicy,
   getSecureWebPreferences,
+  isValidAppTheme,
   isExternalLinkSafeToOpen,
   isValidStudyStatus
 } from './security';
+import { createSettingsStore, type SettingsStore } from './settingsStore';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -21,6 +23,7 @@ const SEED_RELOAD_DEBOUNCE_MS = 200;
 
 let mainWindow: BrowserWindow | null = null;
 let learningStore: LearningStore | null = null;
+let settingsStore: SettingsStore | null = null;
 let seedWatcher: fs.FSWatcher | null = null;
 let seedReloadTimer: NodeJS.Timeout | null = null;
 
@@ -60,11 +63,17 @@ if (!gotSingleInstanceLock) {
       installCsp(isDevelopment);
       installLearningAssetProtocol();
       learningStore = openLearningStore();
+      settingsStore = openSettingsStore();
       registerIpcHandlers(() => {
         if (!learningStore) {
           throw new Error('Learning store is not initialized');
         }
         return learningStore;
+      }, () => {
+        if (!settingsStore) {
+          throw new Error('Settings store is not initialized');
+        }
+        return settingsStore;
       });
       if (isDevelopment) {
         installSeedHotReload();
@@ -100,6 +109,7 @@ if (!gotSingleInstanceLock) {
       seedReloadTimer = null;
     }
     learningStore = null;
+    settingsStore = null;
   });
 }
 
@@ -111,7 +121,7 @@ function createWindow() {
     minHeight: 640,
     show: false,
     title: 'AI Infra Learning',
-    backgroundColor: '#0f172a',
+    backgroundColor: getWindowBackgroundColor(settingsStore?.getSettings().theme ?? 'light'),
     webPreferences: getSecureWebPreferences(path.join(__dirname, 'preload.js'))
   });
 
@@ -255,6 +265,14 @@ function openLearningStore() {
   });
 }
 
+function openSettingsStore() {
+  return createSettingsStore(getSettingsPath());
+}
+
+function getWindowBackgroundColor(theme: AppTheme) {
+  return theme === 'dark' ? '#101214' : '#f6f7f9';
+}
+
 function installSeedHotReload() {
   const seedPath = getSeedDataPath();
   seedWatcher?.close();
@@ -286,9 +304,10 @@ function notifySeedReload(payload: SeedReloadEvent) {
   }
 }
 
-function registerIpcHandlers(getStore: () => LearningStore) {
+function registerIpcHandlers(getStore: () => LearningStore, getSettingsStore: () => SettingsStore) {
   ipcMain.handle('learning:getOutline', () => getStore().getOutline());
   ipcMain.handle('learning:getProgress', () => getStore().getProgress());
+  ipcMain.handle('learning:getSettings', () => getSettingsStore().getSettings());
   ipcMain.handle('learning:getTopic', (_event, topicId: unknown) => {
     if (typeof topicId !== 'string') {
       throw new Error('Invalid IPC payload: topicId must be a string');
@@ -304,5 +323,13 @@ function registerIpcHandlers(getStore: () => LearningStore) {
       throw new Error(`Invalid status: ${status}`);
     }
     return getStore().updateTopicStatus(topicId, status as StudyStatus);
+  });
+  ipcMain.handle('learning:updateTheme', (_event, theme: unknown) => {
+    if (!isValidAppTheme(theme)) {
+      throw new Error(`Invalid theme: ${String(theme)}`);
+    }
+    const settings = getSettingsStore().updateTheme(theme);
+    mainWindow?.setBackgroundColor(getWindowBackgroundColor(settings.theme));
+    return settings;
   });
 }

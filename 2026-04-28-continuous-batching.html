@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>连续批处理 · Continuous Batching</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #faf6ee;
+  color: #1a1816;
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 17px;
+  line-height: 1.7;
+  font-feature-settings: "kern", "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+article {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 80px 40px 120px;
+}
+
+/* ---- Header ---- */
+header { margin-bottom: 80px; }
+.kicker {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a7f74;
+  margin-bottom: 24px;
+}
+h1 {
+  font-family: 'Source Serif 4', serif;
+  font-weight: 500;
+  font-size: 46px;
+  line-height: 1.15;
+  margin: 0 0 20px;
+  letter-spacing: -0.01em;
+}
+h1 em {
+  font-style: italic;
+  color: #a8322d;
+  font-weight: 500;
+}
+.dek {
+  font-family: 'Source Serif 4', serif;
+  font-size: 19px;
+  line-height: 1.5;
+  color: #5a544c;
+  font-style: italic;
+  margin: 0 0 36px;
+  max-width: 620px;
+}
+
+nav.toc {
+  border-top: 1px solid rgba(26, 24, 22, 0.18);
+  padding-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+nav.toc a {
+  color: #6b6661;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 2px;
+  transition: color .2s, border-color .2s;
+}
+nav.toc a:hover { color: #a8322d; border-bottom-color: #a8322d; }
+nav.toc .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #b8a99a;
+  margin-right: 6px;
+}
+
+/* ---- Sections ---- */
+section { margin-bottom: 84px; scroll-margin-top: 30px; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-bottom: 28px;
+  border-top: 1px solid rgba(26, 24, 22, 0.18);
+  padding-top: 24px;
+}
+.section-head .roman {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #a8322d;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.section-head h2 {
+  font-family: 'Source Serif 4', serif;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.25;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+.subhead {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a7f74;
+  margin: 32px 0 12px;
+}
+
+p { margin: 0 0 18px; }
+p strong { font-weight: 600; }
+em.term { font-style: italic; color: #2a2623; }
+code, .mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+code {
+  background: rgba(168, 50, 45, 0.07);
+  padding: 1px 6px;
+  border-radius: 2px;
+  color: #7a2520;
+  font-size: 13.5px;
+}
+
+/* ---- Insight callout ---- */
+.insight {
+  border-left: 2px solid #a8322d;
+  padding: 6px 0 6px 22px;
+  margin: 28px 0 32px;
+  font-family: 'Source Serif 4', serif;
+  font-size: 16.5px;
+  font-style: italic;
+  color: #2a2623;
+  line-height: 1.55;
+}
+.insight .label {
+  display: block;
+  font-family: 'Instrument Sans', sans-serif;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #a8322d;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+/* ---- Figure ---- */
+.figure {
+  margin: 28px -20px;
+  background: #fdfbf5;
+  border: 1px solid rgba(26, 24, 22, 0.10);
+  padding: 24px 24px 18px;
+}
+.figure canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.caption {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 12px;
+  color: #6b6661;
+  margin-top: 14px;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+}
+.caption .figlabel {
+  font-weight: 600;
+  color: #1a1816;
+  margin-right: 6px;
+}
+
+/* ---- Controls ---- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 36px;
+  align-items: flex-end;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(26, 24, 22, 0.10);
+}
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1 1 200px;
+}
+.control label {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b6661;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.control label .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #a8322d;
+  font-weight: 500;
+}
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  background: rgba(26, 24, 22, 0.25);
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #faf6ee;
+  border: 1.5px solid #a8322d;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform .12s;
+}
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: #faf6ee;
+  border: 1.5px solid #a8322d;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+button.action {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid #1a1816;
+  color: #1a1816;
+  padding: 9px 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  transition: background .15s, color .15s;
+}
+button.action:hover { background: #1a1816; color: #faf6ee; }
+button.action.primary { border-color: #a8322d; color: #a8322d; }
+button.action.primary:hover { background: #a8322d; color: #faf6ee; }
+button.action svg { width: 11px; height: 11px; }
+
+/* ---- Stats grid ---- */
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: rgba(26, 24, 22, 0.10);
+  margin: 20px 0 0;
+  border: 1px solid rgba(26, 24, 22, 0.10);
+}
+.stat {
+  background: #fdfbf5;
+  padding: 14px 18px;
+}
+.stat .lbl {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a7f74;
+  margin-bottom: 4px;
+}
+.stat .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  color: #1a1816;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.stat .num .unit {
+  font-size: 12px;
+  color: #6b6661;
+  margin-left: 4px;
+  font-weight: 400;
+}
+.stat.accent .num { color: #a8322d; }
+
+/* ---- Number table ---- */
+.envelope {
+  font-family: 'Source Serif 4', serif;
+  font-size: 15.5px;
+  margin: 24px 0;
+  border-top: 1px solid rgba(26, 24, 22, 0.18);
+  border-bottom: 1px solid rgba(26, 24, 22, 0.18);
+}
+.envelope .row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px dotted rgba(26, 24, 22, 0.12);
+}
+.envelope .row:last-child { border-bottom: none; }
+.envelope .row.total {
+  border-top: 1px solid rgba(26, 24, 22, 0.18);
+  margin-top: 6px;
+  padding-top: 14px;
+  font-weight: 500;
+}
+.envelope .label { color: #5a544c; }
+.envelope .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: #1a1816;
+}
+.envelope .val .delta { color: #a8322d; margin-left: 8px; }
+
+/* ---- Closing list ---- */
+.remember {
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rem;
+}
+.remember li {
+  counter-increment: rem;
+  padding: 14px 0 14px 44px;
+  border-top: 1px solid rgba(26, 24, 22, 0.12);
+  position: relative;
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+.remember li:last-child { border-bottom: 1px solid rgba(26, 24, 22, 0.12); }
+.remember li::before {
+  content: counter(rem, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #a8322d;
+  letter-spacing: 0.08em;
+}
+
+/* ---- Footer ---- */
+footer {
+  margin-top: 100px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(26, 24, 22, 0.18);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a7f74;
+  display: flex;
+  justify-content: space-between;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 720px) {
+  article { padding: 50px 20px 80px; }
+  h1 { font-size: 34px; }
+  .figure { margin: 24px -10px; padding: 18px 14px 14px; }
+  .stats { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<article>
+
+  <header>
+    <div class="kicker">Daily Lesson · 2026-04-28 · LLM Inference</div>
+    <h1>当批次<em>自己重组</em>：<br>Continuous Batching</h1>
+    <p class="dek">为什么把"按批次推理"换成"按 token 重排"，能让 LLM 推理吞吐翻 3 倍——而你只需要改调度器。</p>
+    <nav class="toc">
+      <a href="#s1"><span class="num">I.</span>气泡问题</a>
+      <a href="#s2"><span class="num">II.</span>从 batch-step 到 token-step</a>
+      <a href="#s3"><span class="num">III.</span>调度器实验台</a>
+      <a href="#s4"><span class="num">IV.</span>一次粗略估算</a>
+      <a href="#s5"><span class="num">V.</span>记住三件事</a>
+    </nav>
+  </header>
+
+  <!-- ============ Section I ============ -->
+  <section id="s1">
+    <div class="section-head">
+      <div class="roman">I.</div>
+      <h2>请求并不会同时结束，可 GPU 等得起吗</h2>
+    </div>
+
+    <p>
+      生产环境里的 LLM 推理服务每天接到的 prompt 长短不一、生成长度更不一。一个简单的 chat 回复可能 30 个 token 就停了；一段代码生成可能要 800 个 token 才输出完整。
+      传统的<em class="term">静态批处理 (static batching)</em>把 N 个请求凑成一个 batch，丢进 forward，等所有请求都生成完才开始下一批。
+    </p>
+    <p>
+      问题就出在"等所有请求都生成完"这一句。GPU 在 decode 阶段是<em class="term">memory-bound</em>的——也就是说，
+      <strong>跑 1 个 sequence 和跑 8 个 sequence 的 forward 时间几乎一样</strong>，只要 KV Cache 装得下。
+      所以一旦 batch 里某个请求提前结束，它在剩余的 forward step 里就只是"占着 batch slot 但什么都不算"——
+      整个 batch 必须凑齐到最长那个请求的长度，才能腾出位置接新请求。
+    </p>
+
+    <div class="insight">
+      <span class="label">Insight</span>
+      静态批处理的吞吐瓶颈不是显存，也不是算力，而是<strong>请求长度的方差</strong>。
+      方差越大，GPU 上"空着但走不掉"的 slot 越多，这些就是<em class="term">batching bubbles</em>。
+    </div>
+  </section>
+
+  <!-- ============ Section II ============ -->
+  <section id="s2">
+    <div class="section-head">
+      <div class="roman">II.</div>
+      <h2>从 batch-step 调度，改成 token-step 调度</h2>
+    </div>
+
+    <p>
+      Continuous batching（也叫 in-flight batching、iteration-level scheduling）的核心改动其实只有一行：
+      <strong>调度的最小单位从"一整个 batch 跑完"换成"一个 forward step 之后"</strong>。
+      每完成一个 decode step（即每生成一个 token），调度器就检查：
+      谁结束了？把它的 KV Cache 释放掉，立刻从队列里拉一个新请求填进 batch。
+    </p>
+    <p>
+      下面把同样 8 个请求，分别用<em class="term">静态批处理</em>和<em class="term">连续批处理</em>跑一遍。
+      横轴是 forward iteration（每一格 = 一个 decode step），纵轴是 batch 的 4 个 slot。
+      不同颜色代表不同请求；空白格子就是浪费掉的 GPU 周期。
+    </p>
+
+    <div class="figure">
+      <canvas id="cmp" width="1400" height="640"></canvas>
+      <div class="controls" style="border-top: none; padding-top: 4px;">
+        <button class="action primary" id="cmp-play">
+          <svg viewBox="0 0 10 10"><polygon points="2,1 9,5 2,9" fill="currentColor"/></svg>
+          <span id="cmp-play-lbl">播放</span>
+        </button>
+        <button class="action" id="cmp-reset">重置</button>
+        <div style="flex: 1; min-width: 200px;">
+          <div class="stats" style="margin: 0;">
+            <div class="stat">
+              <div class="lbl">Static Batching</div>
+              <div class="num"><span id="static-tok">0</span><span class="unit">tokens · <span id="static-util">0</span>% util</span></div>
+            </div>
+            <div class="stat accent">
+              <div class="lbl">Continuous Batching</div>
+              <div class="num"><span id="cont-tok">0</span><span class="unit">tokens · <span id="cont-util">0</span>% util</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <span class="figlabel">Fig. 1</span>
+        同一组 8 个请求（生成长度 4–18 token 不等），上图为 static batching、下图为 continuous batching。
+        浅灰格子是 GPU 走完了 forward 但 slot 上没有真实工作——也就是 bubble。
+      </div>
+    </div>
+
+    <div class="insight">
+      <span class="label">Insight</span>
+      连续批处理没有改变模型，没有改变 kernel，没有改变 KV Cache 的结构。
+      它只把"什么时候允许新请求进来"这个决定的粒度，从 batch 级别下沉到了 iteration 级别。
+    </div>
+  </section>
+
+  <!-- ============ Section III ============ -->
+  <section id="s3">
+    <div class="section-head">
+      <div class="roman">III.</div>
+      <h2>调度器实验台</h2>
+    </div>
+
+    <p>
+      连续批处理的收益完全取决于<strong>请求长度有多不均匀</strong>——以及 batch 容量有多大。
+      下面这个 simulator 会按你给的参数生成 32 个请求，分别用两种调度器跑一遍同一份 workload，
+      让你直观感受方差和并发度对吞吐的撬动。
+    </p>
+
+    <div class="figure">
+      <canvas id="sim" width="1400" height="380"></canvas>
+      <div class="controls">
+        <div class="control">
+          <label>Batch 容量 <span class="val" id="sim-bs-val">8</span></label>
+          <input type="range" id="sim-bs" min="2" max="16" step="1" value="8">
+        </div>
+        <div class="control">
+          <label>输出长度方差 <span class="val" id="sim-var-val">0.6</span></label>
+          <input type="range" id="sim-var" min="0" max="100" step="1" value="60">
+        </div>
+        <div class="control">
+          <label>平均输出长度 <span class="val" id="sim-len-val">120</span></label>
+          <input type="range" id="sim-len" min="20" max="300" step="10" value="120">
+        </div>
+        <button class="action" id="sim-reseed">换一组请求</button>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="lbl">Static · 完成耗时 / 利用率</div>
+          <div class="num"><span id="s-time">—</span><span class="unit">step · <span id="s-u">—</span>%</span></div>
+        </div>
+        <div class="stat accent">
+          <div class="lbl">Continuous · 完成耗时 / 利用率</div>
+          <div class="num"><span id="c-time">—</span><span class="unit">step · <span id="c-u">—</span>%</span></div>
+        </div>
+      </div>
+      <div class="caption">
+        <span class="figlabel">Fig. 2</span>
+        左边是 static，右边是 continuous，跑的是同一组 32 个请求。柱子越高表示在那个 step 上活跃 slot 越多。
+        把方差拉到 0，两侧吞吐应该几乎一致——这正好印证"是方差在制造 bubble"这个结论。
+      </div>
+    </div>
+
+    <p class="subhead">观察建议</p>
+    <p style="margin-top: 0;">
+      把 <span class="mono">方差 = 0</span>、<span class="mono">batch = 8</span>，两种调度器吞吐差不多。
+      把<span class="mono">方差</span>拉到 0.9，static 的利用率会掉到 40% 以下，而 continuous 几乎纹丝不动。
+      再把 <span class="mono">batch</span> 加到 16，continuous 进一步逼近 100%——这就是 vLLM 那种"先把 batch 拉到 256"的现实理由。
+    </p>
+  </section>
+
+  <!-- ============ Section IV ============ -->
+  <section id="s4">
+    <div class="section-head">
+      <div class="roman">IV.</div>
+      <h2>一次粗略估算：Llama-3-70B 服务一个混合 workload</h2>
+    </div>
+
+    <p>
+      把数字带回来。假设一台 8×H100 跑 Llama-3-70B（TP=8），decode 阶段单步前向需要 ~25 ms。
+      接到的请求里，有人想 30 个 token（短问答），有人想 800 个 token（代码生成），平均 220 token、标准差 280 token。
+      batch 容量是 16。
+    </p>
+
+    <div class="envelope">
+      <div class="row"><span class="label">单 decode step</span><span class="val">25 ms</span></div>
+      <div class="row"><span class="label">最长请求长度（约 P99）</span><span class="val">~900 tokens</span></div>
+      <div class="row"><span class="label">平均请求长度</span><span class="val">220 tokens</span></div>
+      <div class="row"><span class="label">— Static —</span><span class="val"></span></div>
+      <div class="row"><span class="label">batch 寿命（被最长那个拖着）</span><span class="val">900 × 25ms ≈ 22.5 s</span></div>
+      <div class="row"><span class="label">该 batch 实际生成 tokens</span><span class="val">16 × 220 ≈ 3,520</span></div>
+      <div class="row"><span class="label">slot 利用率 = 220 / 900</span><span class="val">≈ 24%</span></div>
+      <div class="row total"><span class="label">吞吐</span><span class="val">3,520 / 22.5 ≈ 156 tok/s<span class="delta">基线</span></span></div>
+      <div class="row"><span class="label">— Continuous —</span><span class="val"></span></div>
+      <div class="row"><span class="label">每 step 平均活跃 slot（理想）</span><span class="val">≈ 16</span></div>
+      <div class="row"><span class="label">slot 利用率</span><span class="val">≈ 95%</span></div>
+      <div class="row total"><span class="label">吞吐</span><span class="val">16 × 0.95 / 0.025 ≈ 608 tok/s<span class="delta">×3.9</span></span></div>
+    </div>
+
+    <p>
+      这就是为什么 2023 年之后没有任何主流推理引擎再用静态批处理——
+      vLLM、TGI、TensorRT-LLM、SGLang 全部默认开启 continuous batching。
+      在生成长度方差大的真实流量上，提升 3–10× 是常态。
+    </p>
+
+    <div class="insight">
+      <span class="label">Insight</span>
+      静态批处理的吞吐被 P99 长度绑架；连续批处理的吞吐被平均长度（和 batch 容量）支配。
+      把吞吐瓶颈从 P99 换成平均，是 LLM 推理工程里最便宜的一次免费午餐。
+    </div>
+  </section>
+
+  <!-- ============ Section V ============ -->
+  <section id="s5">
+    <div class="section-head">
+      <div class="roman">V.</div>
+      <h2>记住三件事</h2>
+    </div>
+
+    <ol class="remember">
+      <li>
+        <strong>Bubble 是方差造成的，不是显存或算力。</strong>
+        如果你的请求生成长度都接近，static 和 continuous 没区别——
+        但 LLM 应用层流量天然方差大，所以这个优化几乎对所有真实 workload 都赚。
+      </li>
+      <li>
+        <strong>Continuous batching 改的是调度，不是 kernel。</strong>
+        前向算子、KV Cache 布局都不动，只是把"什么时候允许新请求加入 batch"从 batch 边界改到 iteration 边界。
+        这也意味着它和 PagedAttention、speculative decoding、chunked prefill 互相正交，可以叠加。
+      </li>
+      <li>
+        <strong>Continuous batching 让吞吐对 batch 容量更敏感。</strong>
+        在 static 下，调大 batch 没用——bubble 也跟着放大；在 continuous 下，调大 batch 几乎线性提升吞吐，
+        直到撞上 KV Cache 显存上限。这就是接下来要面对的问题——KV Cache 怎么管，正是 PagedAttention 要解决的事。
+      </li>
+    </ol>
+
+    <p style="margin-top: 40px; color: #6b6661; font-style: italic;">
+      → 下一站：当 batch 越调越大，KV Cache 内存碎片就成了新瓶颈。PagedAttention 是怎么把它当成虚拟内存来管的。
+    </p>
+  </section>
+
+  <footer>
+    <span>AI Infra · Daily Lesson 001</span>
+    <span>Continuous Batching · 2026-04-28</span>
+  </footer>
+
+</article>
+
+<script>
+// ============================================================
+// Section II — Side-by-side animated comparison
+// ============================================================
+(function(){
+  const canvas = document.getElementById('cmp');
+  const ctx = canvas.getContext('2d');
+  const playBtn = document.getElementById('cmp-play');
+  const playLbl = document.getElementById('cmp-play-lbl');
+  const resetBtn = document.getElementById('cmp-reset');
+  const staticTokEl = document.getElementById('static-tok');
+  const contTokEl = document.getElementById('cont-tok');
+  const staticUtilEl = document.getElementById('static-util');
+  const contUtilEl = document.getElementById('cont-util');
+
+  // Fixed deterministic workload: 8 requests with varying output lengths
+  // (slot count 4 -> first 4 fill batch, last 4 wait in queue)
+  const REQUESTS = [
+    { id: 0, len: 7,  color: '#a8322d' },
+    { id: 1, len: 14, color: '#3a5878' },
+    { id: 2, len: 4,  color: '#8a9a6b' },
+    { id: 3, len: 11, color: '#b8823a' },
+    { id: 4, len: 9,  color: '#7a4565' },
+    { id: 5, len: 5,  color: '#406b5a' },
+    { id: 6, len: 18, color: '#9a4a3a' },
+    { id: 7, len: 6,  color: '#5a6f8a' },
+  ];
+  const SLOTS = 4;
+
+  // Pre-compute the static & continuous schedules
+  function simulate() {
+    // static: process in chunks of SLOTS, batch ends when longest in chunk done
+    const staticSched = []; // staticSched[step] = [reqIdx or null per slot]
+    let s = 0;
+    for (let chunk = 0; chunk < REQUESTS.length; chunk += SLOTS) {
+      const group = REQUESTS.slice(chunk, chunk + SLOTS);
+      const maxLen = Math.max(...group.map(r => r.len));
+      for (let t = 0; t < maxLen; t++) {
+        const row = [];
+        for (let k = 0; k < SLOTS; k++) {
+          const r = group[k];
+          if (r && t < r.len) row.push(r.id);
+          else row.push(null);
+        }
+        staticSched.push(row);
+      }
+    }
+
+    // continuous: at each step, fill empty slots from queue until queue empty
+    const contSched = [];
+    const queue = REQUESTS.map(r => ({...r, remaining: r.len}));
+    const slots = [null, null, null, null]; // each slot holds {req, remaining} or null
+    // initial fill
+    for (let k = 0; k < SLOTS && queue.length > 0; k++) {
+      slots[k] = queue.shift();
+    }
+    while (slots.some(s => s !== null)) {
+      const row = slots.map(s => s ? s.id : null);
+      contSched.push(row);
+      // advance
+      for (let k = 0; k < SLOTS; k++) {
+        if (slots[k]) {
+          slots[k].remaining -= 1;
+          if (slots[k].remaining <= 0) {
+            slots[k] = queue.length > 0 ? queue.shift() : null;
+          }
+        }
+      }
+    }
+    return { staticSched, contSched };
+  }
+  const { staticSched, contSched } = simulate();
+  const totalSteps = Math.max(staticSched.length, contSched.length);
+
+  // animation state
+  let curStep = 0;
+  let playing = false;
+  let lastT = 0;
+  let stepInterval = 220; // ms per step
+  let acc = 0;
+
+  // layout
+  function getLayout() {
+    const w = canvas.width, h = canvas.height;
+    const padX = 60, padY = 50;
+    const labelW = 130;
+    const titleH = 36;
+    const sectionH = (h - 2*padY - titleH) / 2;
+    const gridW = w - padX*2 - labelW;
+    const gridH = sectionH - titleH - 20;
+    const cellW = gridW / totalSteps;
+    const cellH = (gridH - 6) / SLOTS;
+    return { w, h, padX, padY, labelW, titleH, sectionH, gridW, gridH, cellW, cellH };
+  }
+
+  function draw() {
+    const L = getLayout();
+    ctx.fillStyle = '#fdfbf5';
+    ctx.fillRect(0, 0, L.w, L.h);
+
+    drawPanel(L, 0, 'Static Batching', staticSched, false);
+    drawPanel(L, 1, 'Continuous Batching', contSched, true);
+
+    // step indicator
+    ctx.fillStyle = '#8a7f74';
+    ctx.font = '500 13px "JetBrains Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`step ${curStep} / ${totalSteps}`, L.w - L.padX, L.padY - 18);
+  }
+
+  function drawPanel(L, idx, title, sched, isAccent) {
+    const yOffset = L.padY + idx * L.sectionH + (idx > 0 ? 16 : 0);
+    const gridX = L.padX + L.labelW;
+    const gridY = yOffset + L.titleH;
+
+    // title
+    ctx.fillStyle = isAccent ? '#a8322d' : '#1a1816';
+    ctx.font = '500 16px "Source Serif 4", serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(title, L.padX, yOffset + 22);
+
+    // slot labels
+    ctx.fillStyle = '#8a7f74';
+    ctx.font = '500 11px "Instrument Sans", sans-serif';
+    for (let k = 0; k < SLOTS; k++) {
+      ctx.textAlign = 'right';
+      ctx.fillText(`slot ${k}`, gridX - 12, gridY + k * L.cellH + L.cellH/2 + 4);
+    }
+
+    // baseline rules
+    ctx.strokeStyle = 'rgba(26,24,22,0.10)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(gridX, gridY);
+    ctx.lineTo(gridX + L.gridW, gridY);
+    ctx.moveTo(gridX, gridY + SLOTS * L.cellH);
+    ctx.lineTo(gridX + L.gridW, gridY + SLOTS * L.cellH);
+    ctx.stroke();
+
+    // cells
+    for (let t = 0; t < curStep && t < sched.length; t++) {
+      const row = sched[t];
+      for (let k = 0; k < SLOTS; k++) {
+        const x = gridX + t * L.cellW;
+        const y = gridY + k * L.cellH;
+        const cw = L.cellW - 0.5;
+        const ch = L.cellH - 2;
+        if (row[k] !== null) {
+          ctx.fillStyle = REQUESTS[row[k]].color;
+          ctx.globalAlpha = 0.85;
+          ctx.fillRect(x, y, cw, ch);
+          ctx.globalAlpha = 1;
+        } else {
+          // bubble: hatched light grey
+          ctx.fillStyle = 'rgba(26,24,22,0.06)';
+          ctx.fillRect(x, y, cw, ch);
+          // diagonal line for emphasis
+          if (cw > 3) {
+            ctx.strokeStyle = 'rgba(26,24,22,0.18)';
+            ctx.lineWidth = 0.6;
+            ctx.beginPath();
+            ctx.moveTo(x, y + ch);
+            ctx.lineTo(x + cw, y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // current step indicator
+    if (playing && curStep > 0 && curStep <= sched.length) {
+      const x = gridX + curStep * L.cellW;
+      ctx.strokeStyle = '#a8322d';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, gridY - 4);
+      ctx.lineTo(x, gridY + SLOTS * L.cellH + 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function updateStats() {
+    let sTok = 0, sActive = 0;
+    for (let t = 0; t < curStep && t < staticSched.length; t++) {
+      for (let k = 0; k < SLOTS; k++) {
+        if (staticSched[t][k] !== null) { sTok++; sActive++; }
+      }
+    }
+    let cTok = 0, cActive = 0;
+    for (let t = 0; t < curStep && t < contSched.length; t++) {
+      for (let k = 0; k < SLOTS; k++) {
+        if (contSched[t][k] !== null) { cTok++; cActive++; }
+      }
+    }
+    const sStepsRun = Math.min(curStep, staticSched.length);
+    const cStepsRun = Math.min(curStep, contSched.length);
+    staticTokEl.textContent = sTok;
+    contTokEl.textContent = cTok;
+    staticUtilEl.textContent = sStepsRun > 0 ? Math.round(sActive / (sStepsRun * SLOTS) * 100) : 0;
+    contUtilEl.textContent = cStepsRun > 0 ? Math.round(cActive / (cStepsRun * SLOTS) * 100) : 0;
+  }
+
+  function tick(ts) {
+    if (!playing) return;
+    if (!lastT) lastT = ts;
+    acc += ts - lastT;
+    lastT = ts;
+    while (acc >= stepInterval && curStep < totalSteps) {
+      curStep++;
+      acc -= stepInterval;
+    }
+    draw();
+    updateStats();
+    if (curStep >= totalSteps) {
+      playing = false;
+      playLbl.textContent = '播放';
+      return;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (curStep >= totalSteps) curStep = 0;
+    playing = !playing;
+    if (playing) {
+      playLbl.textContent = '暂停';
+      lastT = 0;
+      requestAnimationFrame(tick);
+    } else {
+      playLbl.textContent = '播放';
+    }
+  });
+  resetBtn.addEventListener('click', () => {
+    playing = false;
+    curStep = 0;
+    acc = 0;
+    playLbl.textContent = '播放';
+    draw();
+    updateStats();
+  });
+
+  // initial draw
+  draw();
+  updateStats();
+})();
+
+// ============================================================
+// Section III — Interactive simulator
+// ============================================================
+(function(){
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d');
+  const bsEl = document.getElementById('sim-bs');
+  const varEl = document.getElementById('sim-var');
+  const lenEl = document.getElementById('sim-len');
+  const bsValEl = document.getElementById('sim-bs-val');
+  const varValEl = document.getElementById('sim-var-val');
+  const lenValEl = document.getElementById('sim-len-val');
+  const reseedBtn = document.getElementById('sim-reseed');
+  const sTimeEl = document.getElementById('s-time');
+  const cTimeEl = document.getElementById('c-time');
+  const sUEl = document.getElementById('s-u');
+  const cUEl = document.getElementById('c-u');
+
+  let seed = 42;
+  function rand() {
+    // mulberry32
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  function resetRand(s) { seed = s; }
+
+  const N_REQUESTS = 32;
+
+  function genWorkload(seedVal, meanLen, variance) {
+    resetRand(seedVal);
+    const reqs = [];
+    // variance 0..1; sigma = variance * meanLen * 0.9 (cap at 0.9 * mean for stability)
+    const sigma = variance * meanLen * 0.9;
+    for (let i = 0; i < N_REQUESTS; i++) {
+      // Box-Muller
+      const u1 = Math.max(rand(), 1e-9), u2 = rand();
+      const z = Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
+      let len = Math.round(meanLen + z * sigma);
+      // mix in occasional long tail at high variance
+      if (variance > 0.5 && rand() < 0.1) {
+        len = Math.round(len + meanLen * (0.5 + rand() * 1.5));
+      }
+      len = Math.max(5, Math.min(len, meanLen * 6));
+      reqs.push(len);
+    }
+    return reqs;
+  }
+
+  function runStatic(reqs, batchSize) {
+    let totalSteps = 0;
+    let activeSlotSteps = 0;
+    for (let chunk = 0; chunk < reqs.length; chunk += batchSize) {
+      const group = reqs.slice(chunk, chunk + batchSize);
+      const maxLen = Math.max(...group);
+      totalSteps += maxLen;
+      // Each step in this chunk: number of active slots = count of requests with len > t
+      for (let t = 0; t < maxLen; t++) {
+        for (let k = 0; k < group.length; k++) {
+          if (t < group[k]) activeSlotSteps++;
+        }
+      }
+    }
+    // bin into ~120 buckets for chart
+    return { totalSteps, activeSlotSteps, batchSize, type: 'static', reqs };
+  }
+
+  function runContinuous(reqs, batchSize) {
+    const queue = reqs.slice();
+    const slots = new Array(batchSize).fill(0); // remaining tokens
+    // fill initial
+    for (let k = 0; k < batchSize && queue.length > 0; k++) {
+      slots[k] = queue.shift();
+    }
+    let totalSteps = 0;
+    let activeSlotSteps = 0;
+    while (slots.some(s => s > 0)) {
+      // count active
+      for (let k = 0; k < batchSize; k++) {
+        if (slots[k] > 0) {
+          activeSlotSteps++;
+          slots[k]--;
+          if (slots[k] === 0 && queue.length > 0) {
+            slots[k] = queue.shift();
+          }
+        }
+      }
+      totalSteps++;
+    }
+    return { totalSteps, activeSlotSteps, batchSize, type: 'continuous', reqs };
+  }
+
+  // Detailed schedule for chart: returns active-slot-count per step
+  function scheduleStatic(reqs, batchSize) {
+    const series = [];
+    for (let chunk = 0; chunk < reqs.length; chunk += batchSize) {
+      const group = reqs.slice(chunk, chunk + batchSize);
+      const maxLen = Math.max(...group);
+      for (let t = 0; t < maxLen; t++) {
+        let active = 0;
+        for (let k = 0; k < group.length; k++) {
+          if (t < group[k]) active++;
+        }
+        series.push(active);
+      }
+    }
+    return series;
+  }
+  function scheduleCont(reqs, batchSize) {
+    const queue = reqs.slice();
+    const slots = new Array(batchSize).fill(0);
+    for (let k = 0; k < batchSize && queue.length > 0; k++) slots[k] = queue.shift();
+    const series = [];
+    while (slots.some(s => s > 0)) {
+      let active = 0;
+      for (let k = 0; k < batchSize; k++) {
+        if (slots[k] > 0) {
+          active++;
+          slots[k]--;
+          if (slots[k] === 0 && queue.length > 0) slots[k] = queue.shift();
+        }
+      }
+      series.push(active);
+    }
+    return series;
+  }
+
+  function drawChart(L, x0, y0, w, h, series, batchSize, label, accent) {
+    // axes
+    ctx.fillStyle = accent ? '#a8322d' : '#1a1816';
+    ctx.font = '500 14px "Source Serif 4", serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x0, y0 - 12);
+
+    // baseline + cap line
+    ctx.strokeStyle = 'rgba(26,24,22,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + h);
+    ctx.lineTo(x0 + w, y0 + h);
+    ctx.stroke();
+    // cap (batchSize) dashed
+    ctx.strokeStyle = 'rgba(26,24,22,0.25)';
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + w, y0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // bars
+    const n = series.length;
+    if (n === 0) return;
+    const bw = w / n;
+    const barColor = accent ? '#a8322d' : '#3a5878';
+    for (let i = 0; i < n; i++) {
+      const v = series[i];
+      const bh = (v / batchSize) * h;
+      ctx.fillStyle = barColor;
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(x0 + i * bw, y0 + h - bh, Math.max(bw - 0.3, 0.5), bh);
+      ctx.globalAlpha = 1;
+      // bubble portion (idle slots)
+      const bubble = batchSize - v;
+      const ubh = (bubble / batchSize) * h;
+      if (ubh > 0) {
+        ctx.fillStyle = 'rgba(26,24,22,0.05)';
+        ctx.fillRect(x0 + i * bw, y0, Math.max(bw - 0.3, 0.5), ubh);
+      }
+    }
+    // axis labels
+    ctx.fillStyle = '#8a7f74';
+    ctx.font = '500 10px "Instrument Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${n} steps`, x0, y0 + h + 14);
+    ctx.textAlign = 'right';
+    ctx.fillText(`cap ${batchSize}`, x0 + w, y0 - 4);
+  }
+
+  function render() {
+    const bs = +bsEl.value;
+    const variance = +varEl.value / 100;
+    const meanLen = +lenEl.value;
+    bsValEl.textContent = bs;
+    varValEl.textContent = variance.toFixed(2);
+    lenValEl.textContent = meanLen;
+
+    const reqs = genWorkload(seed, meanLen, variance);
+    const sSeries = scheduleStatic(reqs, bs);
+    const cSeries = scheduleCont(reqs, bs);
+    const sActive = sSeries.reduce((a,b)=>a+b, 0);
+    const cActive = cSeries.reduce((a,b)=>a+b, 0);
+    const sUtil = sSeries.length > 0 ? Math.round(sActive / (sSeries.length * bs) * 100) : 0;
+    const cUtil = cSeries.length > 0 ? Math.round(cActive / (cSeries.length * bs) * 100) : 0;
+
+    sTimeEl.textContent = sSeries.length;
+    cTimeEl.textContent = cSeries.length;
+    sUEl.textContent = sUtil;
+    cUEl.textContent = cUtil;
+
+    // draw two side-by-side charts
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#fdfbf5';
+    ctx.fillRect(0, 0, W, H);
+
+    const padX = 50, padY = 60;
+    const gap = 50;
+    const chartW = (W - padX*2 - gap) / 2;
+    const chartH = H - padY - 50;
+    drawChart(null, padX, padY, chartW, chartH, sSeries, bs, 'Static Batching', false);
+    drawChart(null, padX + chartW + gap, padY, chartW, chartH, cSeries, bs, 'Continuous Batching', true);
+
+    // legend
+    ctx.fillStyle = '#8a7f74';
+    ctx.font = '500 11px "Instrument Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('实心 = 活跃 slot · 浅灰 = bubble · 虚线 = batch 容量上限', padX, H - 14);
+  }
+
+  bsEl.addEventListener('input', render);
+  varEl.addEventListener('input', render);
+  lenEl.addEventListener('input', render);
+  reseedBtn.addEventListener('click', () => { seed = Math.floor(Math.random() * 1e9); render(); });
+
+  render();
+})();
+</script>
+
+</body>
+</html>

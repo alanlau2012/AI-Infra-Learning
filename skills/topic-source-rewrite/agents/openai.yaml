@@ -1,0 +1,4 @@
+interface:
+  display_name: "Topic Source Rewrite"
+  short_description: "Authority-based workflow to rewrite Topic content safely"
+  default_prompt: "Use $topic-source-rewrite to fix one Topic with source snapshots first, then rewrite seed content and verify end-to-end."

@@ -56,10 +56,11 @@ describe('learning store', () => {
     expect(reopened.getTopic('T01').status).toBe('completed');
     expect(reopened.getProgress().completedTopics).toBe(1);
     expect(JSON.parse(fs.readFileSync(progressPath, 'utf8'))).toEqual({
-      version: 1,
+      version: 2,
       topicStatus: {
         T01: 'completed'
-      }
+      },
+      topicGate: {}
     });
   });
 
@@ -74,10 +75,11 @@ describe('learning store', () => {
     store.updateTopicStatus('T02', 'in_progress');
 
     expect(JSON.parse(fs.readFileSync(progressPath, 'utf8'))).toEqual({
-      version: 1,
+      version: 2,
       topicStatus: {
         T02: 'in_progress'
-      }
+      },
+      topicGate: {}
     });
   });
 
@@ -146,13 +148,21 @@ describe('learning store', () => {
     for (const topic of seedData.topics) {
       expect(topic.body_md?.trim(), topic.id).toBeTruthy();
       expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
-      expect(topic.body_md?.match(/^##\s+/gm), topic.id).toHaveLength(5);
+      // Topics with a gate add a "## 判断力检验" H2 section, so 5 or 6 are both valid.
+      const h2Count = topic.body_md?.match(/^##\s+/gm)?.length ?? 0;
+      const allowedH2 = topic.gate ? [5, 6] : [5];
+      expect(allowedH2, topic.id).toContain(h2Count);
       for (const heading of expectedHeadings) {
         expect(topic.body_md, topic.id).toContain(heading);
       }
-      const match = topic.body_md?.match(diagramPattern);
-      expect(match?.[1], topic.id).toBeTruthy();
-      expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);
+      // Topics with an interactive directive replace the static SVG; otherwise
+      // the diagram image must be present and bundled.
+      const hasDirective = /^:::interactive\{[^}]*\}\s*$/m.test(topic.body_md ?? '');
+      if (!hasDirective) {
+        const match = topic.body_md?.match(diagramPattern);
+        expect(match?.[1], topic.id).toBeTruthy();
+        expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);
+      }
     }
   });
 

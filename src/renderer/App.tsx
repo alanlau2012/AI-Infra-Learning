@@ -141,6 +141,24 @@ export default function App() {
     }
   }
 
+  async function refreshAfterGate() {
+    if (!selectedTopicIdRef.current) {
+      return;
+    }
+    try {
+      const [nextTopic, nextOutline, nextProgress] = await Promise.all([
+        window.learning.getTopic(selectedTopicIdRef.current),
+        window.learning.getOutline(),
+        window.learning.getProgress()
+      ]);
+      setTopic(nextTopic);
+      setOutline(nextOutline);
+      setProgress(nextProgress);
+    } catch (nextError) {
+      setContentError(nextError instanceof Error ? nextError.message : '刷新进度失败');
+    }
+  }
+
   async function updateTheme(theme: AppTheme) {
     setContentError(null);
     try {
@@ -217,6 +235,7 @@ export default function App() {
             stage={selectedStage}
             onSelectTopic={(id) => void selectTopic(id)}
             onUpdateStatus={(status) => void updateStatus(status)}
+            onGateCompleted={() => void refreshAfterGate()}
           />
         ) : (
           <div className="empty-state">暂无可学习专题</div>

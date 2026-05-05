@@ -324,49 +324,6 @@ function registerIpcHandlers(getStore: () => LearningStore, getSettingsStore: ()
     }
     return getStore().updateTopicStatus(topicId, status as StudyStatus);
   });
-  ipcMain.handle('learning:getTopicGate', (_event, topicId: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    return getStore().getTopicGate(topicId);
-  });
-  ipcMain.handle('learning:startGateAttempt', (_event, topicId: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    return getStore().startGateAttempt(topicId);
-  });
-  ipcMain.handle('learning:checkSingleAnswer', (_event, topicId: unknown, questionId: unknown, answer: unknown) => {
-    if (typeof topicId !== 'string' || typeof questionId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId and questionId must be strings');
-    }
-    if (answer !== 'compute' && answer !== 'memory') {
-      throw new Error(`Invalid answer: ${String(answer)}`);
-    }
-    return getStore().checkSingleAnswer(topicId, questionId, answer);
-  });
-  ipcMain.handle('learning:finalizeAttempt', (_event, topicId: unknown, answers: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    if (!Array.isArray(answers)) {
-      throw new Error('Invalid IPC payload: answers must be an array');
-    }
-    const sanitized = answers.map((entry, index) => {
-      if (!entry || typeof entry !== 'object') {
-        throw new Error(`Invalid answer entry at index ${index}`);
-      }
-      const e = entry as Record<string, unknown>;
-      if (typeof e.questionId !== 'string') {
-        throw new Error(`Invalid questionId at index ${index}`);
-      }
-      if (e.answer !== 'compute' && e.answer !== 'memory') {
-        throw new Error(`Invalid answer at index ${index}`);
-      }
-      return { questionId: e.questionId, answer: e.answer as 'compute' | 'memory' };
-    });
-    return getStore().finalizeAttempt(topicId, sanitized);
-  });
   ipcMain.handle('learning:updateTheme', (_event, theme: unknown) => {
     if (!isValidAppTheme(theme)) {
       throw new Error(`Invalid theme: ${String(theme)}`);

@@ -38,10 +38,9 @@ interface Props {
   stage: StageWithTopics | null;
   onUpdateStatus: (status: StudyStatus) => void;
   onSelectTopic: (topicId: string) => void;
-  onGateCompleted?: () => void;
 }
 
-export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelectTopic, onGateCompleted }: Props) {
+export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelectTopic }: Props) {
   const headings = useMemo(
     () => (topic.bodyMd ? extractMarkdownHeadings(topic.bodyMd).filter((heading) => heading.level >= 2) : []),
     [topic.bodyMd]
@@ -112,7 +111,7 @@ export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelect
 
         <section className="detail-section detail-body-section" aria-label="详细内容">
           {topic.bodyMd ? (
-            <MarkdownContent markdown={topic.bodyMd} topicId={topic.id} onGateCompleted={onGateCompleted} />
+            <MarkdownContent markdown={topic.bodyMd} />
           ) : (
             <p className="body-fallback">正文内容待补充。</p>
           )}

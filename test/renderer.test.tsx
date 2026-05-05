@@ -116,16 +116,6 @@ beforeEach(() => {
     }),
     updateTopicStatus: vi.fn().mockResolvedValue({ ...topic, status: 'completed' }),
     updateTheme: vi.fn().mockImplementation((theme: string) => Promise.resolve({ theme })),
-    getTopicGate: vi.fn().mockResolvedValue(null),
-    startGateAttempt: vi.fn().mockResolvedValue([]),
-    checkSingleAnswer: vi.fn().mockResolvedValue({
-      questionId: '',
-      correct: false,
-      correctAnswer: 'memory',
-      explanation: '',
-      operatingPoint: { ai: 0, perfTflops: 0 }
-    }),
-    finalizeAttempt: vi.fn().mockResolvedValue({ passed: false, correctCount: 0, total: 5 }),
     onSeedReloaded: vi.fn().mockImplementation((callback: (event: SeedReloadEvent) => void) => {
       seedReloadCallback = callback;
       return vi.fn();

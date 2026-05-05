@@ -6,7 +6,7 @@
 
 - 这是面向 GTS AI Infra 团队内部学习的 Windows Electron 应用。
 - 当前已落地的学习能力包含：
-  - 4 个 Stage、21 个 Topic 的学习列表与详情页。
+  - 4 个 Stage、15 个 Topic 的学习列表与详情页（Enterprise Agent Platform Builder 课程）。
   - Topic 正文渲染（Markdown）、专题图示（`resources/topic-diagrams`）与来源信息（`sources`）。
   - 学习状态持久化（`progress.json`）与进度统计。
   - 路线图视图（Roadmap）与主干学习路径展示。

@@ -6,22 +6,12 @@
 
 ## 项目定位
 
-**产品定位：交互式学习产品（非电子书）**。判定标准：核心 5 个 topic（T01 Roofline / T02 KV Cache / T06 vLLM / T09 MTP / T10 量化）必须含交互组件——用户必须"动一下"才能形成判断力。任何 PR 不符合这条定位（例：继续把"卡片+图标"当学习能力堆叠、用纯文本满足"覆盖某概念"）应被拒。如果 Phase 2 的 RooflineChart gate 测试失败（5 人盲测中能凭直觉判 bound 的少于 3 人），整体路线回退到"高保真电子书"，砍 Roadmap/状态机/buildCheckpoints；不接受继续走中间路线。
+**产品定位：高保真电子书（Enterprise Agent Platform Builder 学习手册）**。GTS AI Infra 团队内部学习 App（Windows Electron 桌面端），用 Markdown 渲染 + 侧边栏导航 + 路线图 DAG 三件套承载 4 Stage / 15 Topic 课程内容。**没有交互组件、没有判断力 gate、没有自动判分**。Phase 2 曾尝试 RooflineChart + gate 路线，因核心 5 个 topic 全部换主题、宿主消失，已于 2026-05 全量回退电子书定位（详见 [docs/2026-05-content-audit.md](docs/2026-05-content-audit.md)）。
 
-GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已交付 Phase 1 MVP + Phase 2 第一批增量。
+任何 PR 不要重新引入"交互组件 / 自动判分 / split-before-render directive 解析"，除非产品明确转向。
 
-- **Phase 1 已交付**：4 个 Stage / 21 个 Topic 的内置学习内容、专题详情、学习状态持久化、进度统计
-- **Phase 2 已交付（DAG + Markdown + 交互组件增量）**：
-  - 路线图视图：React Flow 渲染 21 节点的依赖 DAG，按 Stage 分组、主干路径金色高亮、点击节点跳转列表
-  - Topic 富文本：seed 内容生成/承载 Markdown，支持代码块（语法高亮）、表格、引用、列表
-  - T01 RooflineChart 交互组件：Explore 模式（自选硬件/场景拖拉比较）+ Gate 判断力检验（5 题 / 通过 4 题解锁 completed）
-    - split-before-render 指令解析（`:::interactive{...}:::`），XSS 防线不变
-    - 答案键（correctAnswer / explanation）仅存 main 进程，不下发 renderer
-    - 通关自动写 `topicStatus = 'completed'`，进度 v2 格式增 `topicGate` 字段
-- **Phase 2 未交付**：考试模块、知识管理 CRUD、JSON 导入导出
-- **Phase 3+ 暂不动**：移动端、多端同步、AI 出题、主题切换
-
-产品和原始规划文档（`AI-Infra-Learning-App-PRD.md`、`PLAN.md`）已被 `.gitignore` 排除，仅存在于 Alan 本地。当前增强方案见 `C:\Users\AlanL\.claude\plans\ai-infra-learning-app-prd-concurrent-gray.md`。
+- **当前已交付**：4 个 Stage / 15 个 Topic 的 Enterprise Agent Platform Builder 课程内容、专题详情、学习状态持久化、进度统计、路线图 DAG、Topic 富文本（代码块 / 表格 / 引用 / 列表）
+- **不在路线图**：考试模块、知识管理 CRUD、JSON 导入导出、移动端、多端同步、AI 出题、交互判断力 gate
 
 ---
 
@@ -42,7 +32,7 @@ GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。当前已�
 ```bash
 npm install              # 装依赖
 npm start                # 启动 Electron dev
-npm test                 # 跑全部测试（8 文件 / 65 用例）
+npm test                 # 跑全部测试（6 文件 / 56 用例）
 npm run typecheck        # tsc --noEmit
 npx vite build           # 仅打 renderer bundle 验证
 npm run build            # vite build + electron-forge package（Win x64）
@@ -54,22 +44,23 @@ npm run deindex:node_modules   # 清理误入库的 node_modules
 ```
 src/
   main/
-    main.ts                      Electron 主进程入口、IPC 注册（含 4 个 gate handler）、CSP 安装、单实例锁
-    preload.ts                   contextBridge 暴露 window.learning（9 个方法）
-    learningStore.ts             seed + progress.json 数据服务（getOutline/getTopic/getProgress/getRoadmapGraph/updateTopicStatus + 4 个 gate 方法）
+    main.ts                      Electron 主进程入口、IPC 注册（5 个 learning handler + 1 theme handler）、CSP 安装、单实例锁
+    preload.ts                   contextBridge 暴露 window.learning（7 个方法）
+    learningStore.ts             seed + progress.json 数据服务（getOutline / getTopic / getProgress / getRoadmapGraph / updateTopicStatus）
+    settingsStore.ts             theme 设置持久化
     paths.ts                     dev/prod 资源路径解析
-    security.ts                  CSP 字符串生成 + isValidStudyStatus
+    security.ts                  CSP 字符串生成 + isValidStudyStatus / isValidAppTheme
   renderer/
-    App.tsx                      顶层 state（outline/topic/progress/roadmap/view），无 react-router
+    App.tsx                      顶层 state（outline / topic / progress / roadmap / view），无 react-router
     main.tsx                     React 挂载入口
     styles.css                   主题样式 + ViewTabs + .markdown-body
     lib/
       markdown.ts                markdown-it + DOMPurify + highlight.js 单例（XSS 防线）
-      directive.ts               split-before-render 指令解析（whitelist: roofline-chart）
     components/
       Sidebar.tsx                两级导航树
-      TopicDetailView.tsx        详情卡片（why / key_points / bodyMd / real_world_connection）
-      MarkdownContent.tsx        分段渲染：markdown 段 → MarkdownSegment，directive 段 → 交互组件
+      TopicDetailView.tsx        详情卡片（why / key_points / bodyMd / real_world_connection / sources / 检查点）
+      MarkdownContent.tsx        纯 markdown 渲染（dangerouslySetInnerHTML，sanitize 已在 markdown.ts 内做）
+      ProgressOverview.tsx       Stage 进度概览
       ViewTabs.tsx               列表 / 路线图 切换
       roadmap/
         RoadmapView.tsx          React Flow 容器
@@ -77,28 +68,19 @@ src/
         StageGroupNode.tsx       Stage 背景分组
         useDagreLayout.ts        dagre LR 布局 + Stage bounding box
         roadmap.css              roadmap 作用域样式
-      interactive/
-        RooflineChart/
-          index.tsx              加载 topicGate，分发到 ExplorePanel / GatePanel
-          ChartCanvas.tsx        SVG 手绘：log10 轴 + roofline折线 + 工作点 + 轴投影
-          ExplorePanel.tsx       硬件/对比/场景三联下拉 + 图表 + 边界说明
-          GatePanel.tsx          5 状态机：idle→in_progress→reveal→result→passed/failed
-          roofline.math.ts       纯函数：ridgeAI / rooflinePerf / boundFor / logScale
-          roofline.css           chart + panel 样式
   shared/
-    types.ts                     main / preload / renderer 共享类型（含 10 个 gate 类型）
+    types.ts                     main / preload / renderer 共享类型
 
 resources/
-  seed_data.json                 4 Stage / 21 Topic seed + learning_paths.main_track
+  seed_data.json                 4 Stage / 15 Topic seed + learning_paths（main_track + 3 条 alternative tracks）
 
 test/
-  learningStore.test.ts          seed 加载、progress v2 持久化（含 topicGate）、roadmap graph、非法输入
-  markdown.test.ts               11 用例：XSS sanitization + 渲染基础
-  markdownDirective.test.ts      3 用例：directive 解析（代码围栏感知、whitelist 过滤）
-  rooflineMath.test.ts           4 用例：ridgeAI / rooflinePerf / boundFor / logScale
-  renderer.test.tsx              14 用例：加载、状态切换、视图切换、sidebar 选中、sources 渲染
-  electronSecurity.test.ts       5 用例：CSP / webPreferences
-  paths.test.ts                  2 用例：dev/prod 路径解析
+  learningStore.test.ts          seed 加载、progress v2 持久化、roadmap graph、非法输入、source 投影
+  markdown.test.ts               XSS sanitization + 渲染基础
+  renderer.test.tsx              加载、状态切换、视图切换、sidebar 选中、sources 渲染、热重载
+  electronSecurity.test.ts       CSP / webPreferences
+  paths.test.ts                  dev/prod 路径解析
+  settingsStore.test.ts          theme 持久化
   setup.ts                       jsdom polyfill（ResizeObserver / DOMMatrix）
 ```
 
@@ -112,13 +94,12 @@ test/
 |------|------|
 | `getOutline()` | `StageWithTopics[]` |
 | `getProgress()` | `ProgressSummary` |
-| `getTopic(id)` | `TopicDetail`（含 `bodyMd`、`prerequisites`、`keyPoints`） |
+| `getSettings()` | `AppSettings`（含 theme） |
+| `getTopic(id)` | `TopicDetail`（含 `bodyMd`、`prerequisites`、`keyPoints`、`sources`） |
 | `getRoadmapGraph()` | `{ edges: {from,to}[]; mainTrack: string[] }` |
 | `updateTopicStatus(id, status)` | `TopicDetail` |
-| `getTopicGate(topicId)` | `TopicGate \| null`（含历史 attempts / status；不含答案键） |
-| `startGateAttempt(topicId)` | `GateQuestion[]`（洗牌后 N 题；不含 ai / correctAnswer） |
-| `checkSingleAnswer(topicId, questionId, answer)` | `SingleAnswerResult`（correct + correctAnswer + explanation + 工作点坐标） |
-| `finalizeAttempt(topicId, answers)` | `GateAttemptResult`（passed / correctCount / total；通关写 completed） |
+| `updateTheme(theme)` | `AppSettings` |
+| `onSeedReloaded(callback)` | unsubscribe fn（dev 模式 seed 文件热重载通知） |
 
 新增 IPC 必须：
 1. 在 `learningStore.ts` 写纯函数（input → seed/progress → output）
@@ -134,9 +115,9 @@ test/
 - 进度路径：`app.getPath('userData')/progress.json`，禁止硬编码 `%APPDATA%`
 - Resources 路径：开发用 `app.getAppPath()`，打包用 `process.resourcesPath`
 - **内容数据 vs 用户进度严格分离**：
-  - 内容：`resources/seed_data.json`（含 `gate` 字段：hardwarePresets / scenarios / attemptConfig）
-  - 进度：`progress.json`，v2 格式 `{ "version": 2, "topicStatus": { "T01": "completed" }, "topicGate": { "T01": { "status": "passed", "attempts": 1 } } }`
-  - v1 进度文件静默迁移：`topicGate` 缺失时视为 `{}`，无需显式 migration
+  - 内容：`resources/seed_data.json`
+  - 进度：`progress.json`，v2 格式 `{ "version": 2, "topicStatus": { "T01": "completed" } }`
+  - v1 进度文件静默兼容；老 v2 文件含已废弃的 `topicGate` 字段会被静默丢弃，不报错
 - 不要重新引入 SQLite / migrations，除非产品明确进入更复杂的数据管理阶段。
 
 ---
@@ -165,20 +146,9 @@ CSP（`src/main/security.ts`）：
 - 放宽 `ALLOWED_URI_REGEXP`
 - 引入需要 `unsafe-eval` 的依赖（如 KaTeX 历史版本）
 
-### 交互指令（split-before-render）
+### 不要重新引入交互指令解析
 
-`src/renderer/lib/directive.ts` 在 markdown-it / DOMPurify 之前扫描并**剥离** `:::interactive{...}:::` 块：
-
-- 指令块永不进入 XSS 管道（已剥离）
-- whitelist：`component` ∈ `{'roofline-chart'}`，`mode` ∈ `{'explore','gate'}`，不在 whitelist 的指令静默丢弃
-- 代码围栏内的 `:::` 不被解析（代码示例安全）
-- 新增交互组件必须在 whitelist 内注册，并在 `MarkdownContent.tsx` 添加对应分支
-
-### Gate 答案安全
-
-- `GateQuestion`（下发 renderer）：只含 `id, name, hardwareId, category, tags`
-- `SeedGateScenario`（仅 main 进程）：含 `ai, correctAnswer, explanation`
-- `checkSingleAnswer` 在 main 进程比对后才将 `correctAnswer / explanation / operatingPoint` 返回给单次请求；renderer 不持有答案字典
+`split-before-render` directive 解析（`:::interactive{...}:::`）已于 2026-05 删除。理由：5 个核心 topic 全部换主题导致原 RooflineChart 宿主消失，整套 gate IPC + 交互组件成孤儿代码。如未来要恢复交互能力，必须先经过产品定位讨论，不要在内容 PR 里悄悄加回 directive 解析。
 
 ---
 
@@ -189,10 +159,7 @@ CSP（`src/main/security.ts`）：
 - 改 Electron 安全配置：补 `test/electronSecurity.test.ts`
 - 改资源路径或打包：补 `test/paths.test.ts`，并考虑打包验证
 - 改 Markdown 管道：补 `test/markdown.test.ts` 的 XSS 用例
-- 改 directive 解析：补 `test/markdownDirective.test.ts`
-- 改 roofline 数学：补 `test/rooflineMath.test.ts`
-- 改 gate IPC / learningStore：补 `test/learningStore.test.ts` 的 gate 用例，确保非法输入被拒
-- 改 UI：覆盖加载初始数据、切换 Topic、更新状态、视图切换
+- 改 UI：覆盖加载初始数据、切换 Topic、更新状态、视图切换、sources 渲染
 
 ### React Flow 在 jsdom 下的限制
 
@@ -202,6 +169,16 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 3. 节点点击的回调通过单元测试覆盖（直接调 `selectFromRoadmap`），不在 jsdom 里点真实节点
 
 节点点击的端到端联动需要 Electron 实窗手测。
+
+---
+
+## 内容质量基线（2026-05 内容审查后落地）
+
+- **每个 topic 至少 3 条独立权威信源**（vendor 官方文档 / arXiv 论文 / 一线团队博客），不得集中于单一来源
+- **body_md 至少出现 1 个带数字的 war story 或案例**（"我们某次 P99 TTFT 从 X 涨到 Y，定位到 Z"），避免"清单 + 反问句"AI 模板
+- **凡涉及华为生态的话题，至少出现 1 个具体名词**（MindIE / Atlas / CANN / HCCL），体现私有化受限网络的差异化视角
+- **2024-2026 年的关键演进必须在相关 topic 现身**：MCP（T07）、Anthropic Skills（T05）、OpenTelemetry GenAI semantic conventions（T10）、OWASP LLM Top 10 2025 / NIST AI RMF / EU AI Act（T11）、Anthropic prompt caching（T10）、Chunked Prefill / Disaggregated P/D（T02）
+- **难度与时长必须诚实**：T01 / T15 难度 ≤ 2；T07 / T09 / T11 难度 4 或拆分
 
 ---
 
@@ -222,12 +199,12 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 - 不为兼容未发布的中间状态叠加 shim
 - 保持 TypeScript `strict` 通过
 - 优先小而明确的函数，避免过早抽象
-- 不主动扩展 Phase 2 未交付的考试 / CRUD 功能，除非用户明确要求
+- 不主动扩展未交付的考试 / CRUD / 交互 gate 功能，除非用户明确要求
 
 ---
 
 ## 文档与沟通
 
 - 面向用户的文档默认简体中文
-- 修改行为边界时在 PR / 说明里标明是否影响 Phase 1 / Phase 2 验收
+- 修改 topic 内容时，PR 描述要列：(1) 修了哪个 P0/P1/P2 项（参见 [docs/2026-05-content-audit.md](docs/2026-05-content-audit.md)）；(2) 新引用了哪些信源
 - 不要提交：生成产物、临时日志、进度文件、旧数据库文件、`node_modules`、PRD/PLAN（均已 gitignored）

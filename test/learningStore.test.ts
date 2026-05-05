@@ -61,8 +61,7 @@ describe('learning store', () => {
       version: 2,
       topicStatus: {
         T01: 'completed'
-      },
-      topicGate: {}
+      }
     });
   });
 
@@ -80,8 +79,7 @@ describe('learning store', () => {
       version: 2,
       topicStatus: {
         T02: 'in_progress'
-      },
-      topicGate: {}
+      }
     });
   });
 
@@ -151,8 +149,6 @@ describe('learning store', () => {
       expect(topic.body_md?.trim(), topic.id).toBeTruthy();
       expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
       expect(topic.body_md, topic.id).not.toContain('learning-asset://');
-      expect(topic.body_md, topic.id).not.toContain(':::interactive');
-      expect(topic.gate, topic.id).toBeUndefined();
       expect(topic.body_md?.match(/^##\s+/gm)?.length, topic.id).toBe(5);
       for (const heading of expectedHeadings) {
         expect(topic.body_md, topic.id).toContain(heading);
@@ -160,33 +156,18 @@ describe('learning store', () => {
     }
   });
 
-  it('exposes user-provided source records for the framework topics', () => {
+  it('attaches at least 3 authoritative sources to every rewritten topic and never reverts to the ChatGPT clipping link', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
-    const t01 = store.getTopic('T01');
-
-    expect(t01.sources).toHaveLength(1);
-    expect(t01.sources[0]).toMatchObject({
-      id: 'enterprise-agent-platform-skills',
-      title: 'Enterprise Agent Platform Skills',
-      publisher: 'User-provided clipping',
-      confidence: 'medium',
-      last_verified: '2026-05-05'
-    });
-    expect(t01.sources[0].url).toMatch(/^https?:\/\//);
-    expect(t01.sources[0].covers.length).toBeGreaterThan(0);
-  });
-
-  it('documents the user clipping snapshot used for the Enterprise Agent Platform Skills framework', () => {
-    const snapshotPath = path.join(
-      process.cwd(),
-      'resources',
-      'source-snapshots',
-      'enterprise-agent-platform-skills.md'
-    );
-
-    expect(fs.existsSync(snapshotPath)).toBe(true);
-    expect(fs.readFileSync(snapshotPath, 'utf8')).toContain('15 类关键能力');
+    for (const topic of seedData.topics) {
+      const detail = store.getTopic(topic.id);
+      expect(detail.sources.length, topic.id).toBeGreaterThanOrEqual(3);
+      for (const source of detail.sources) {
+        expect(source.url, topic.id).toMatch(/^https?:\/\//);
+        expect(source.url, topic.id).not.toContain('chatgpt.com/c/');
+        expect(source.covers.length, topic.id).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('deep-clones source covers so external mutation does not leak back into the store', () => {

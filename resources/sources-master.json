@@ -1,0 +1,531 @@
+{
+  "verified_at": "2026-05-05",
+  "schema_version": 1,
+  "categories": {
+    "inference": [
+      {
+        "id": "vllm-blog",
+        "title": "vLLM Project Blog",
+        "url": "https://vllm.ai/blog",
+        "publisher": "vLLM Project",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["chunked prefill", "continuous batching internals", "vLLM engineering deep dives"],
+        "applies_to_topics": ["T02"],
+        "notes": "First-party engineering blog; original blog.vllm.ai 301 to vllm.ai/blog"
+      },
+      {
+        "id": "anyscale-continuous-batching",
+        "title": "How continuous batching enables 23x throughput in LLM inference",
+        "url": "https://www.anyscale.com/blog/continuous-batching-llm-inference",
+        "publisher": "Anyscale",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["continuous batching", "memory-bound vs compute-bound serving", "throughput benchmarks"],
+        "applies_to_topics": ["T02"],
+        "notes": "Canonical explainer of continuous batching"
+      },
+      {
+        "id": "vllm-pagedattention-paper",
+        "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+        "url": "https://arxiv.org/abs/2309.06180",
+        "publisher": "arXiv (SOSP 2023)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["PagedAttention", "KV cache memory management", "vLLM design"],
+        "applies_to_topics": ["T02"],
+        "notes": "Original PagedAttention/vLLM paper"
+      },
+      {
+        "id": "distserve-paper",
+        "title": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving",
+        "url": "https://arxiv.org/abs/2401.09670",
+        "publisher": "arXiv (OSDI 2024)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["prefill/decode disaggregation", "goodput optimization"],
+        "applies_to_topics": ["T03"],
+        "notes": "Foundational P/D disaggregation paper"
+      },
+      {
+        "id": "mooncake-paper",
+        "title": "Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving",
+        "url": "https://arxiv.org/abs/2407.00079",
+        "publisher": "arXiv (Moonshot/Tsinghua)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["KV cache disaggregation", "tiered cache (DRAM/SSD)", "production serving"],
+        "applies_to_topics": ["T03"],
+        "notes": "Production-grade KV-centric architecture"
+      },
+      {
+        "id": "trt-llm-perf-tuning",
+        "title": "TensorRT-LLM Performance Tuning Guide",
+        "url": "https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/index.html",
+        "publisher": "NVIDIA",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["TRT-LLM build flags", "batch/token tuning", "FP8 quantization", "runtime options"],
+        "applies_to_topics": ["T02", "T03"],
+        "notes": "Original perf-best-practices.html now lives under performance-tuning-guide/"
+      },
+      {
+        "id": "gptcache-paper",
+        "title": "GPTCache: An Open-Source Semantic Cache for LLM Applications",
+        "url": "https://aclanthology.org/2023.nlposs-1.24/",
+        "publisher": "ACL Anthology (NLP-OSS 2023)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["semantic cache", "embedding-based hit detection", "LLM cost reduction"],
+        "applies_to_topics": ["T02"],
+        "notes": "Authoritative GPTCache paper; original arXiv ID was incorrect"
+      },
+      {
+        "id": "nemo-guardrails",
+        "title": "NVIDIA NeMo Guardrails",
+        "url": "https://github.com/NVIDIA/NeMo-Guardrails",
+        "publisher": "NVIDIA (GitHub)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["programmable LLM guardrails", "input/output filters", "dialog safety"],
+        "applies_to_topics": ["T03"],
+        "notes": "Open-source guardrails toolkit"
+      }
+    ],
+    "agent_skill_tool": [
+      {
+        "id": "anthropic-building-effective-agents",
+        "title": "Building Effective Agents",
+        "url": "https://www.anthropic.com/research/building-effective-agents",
+        "publisher": "Anthropic",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["agent design patterns", "workflows vs agents", "when to use orchestration"],
+        "applies_to_topics": ["T04", "T05"],
+        "notes": "Authoritative agent patterns article (Dec 2024)"
+      },
+      {
+        "id": "mcp-official",
+        "title": "Model Context Protocol",
+        "url": "https://modelcontextprotocol.io/",
+        "publisher": "Anthropic / MCP Community",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["MCP protocol overview", "client/server model", "tool integration standard"],
+        "applies_to_topics": ["T05", "T07"],
+        "notes": "Official MCP spec site"
+      },
+      {
+        "id": "react-paper",
+        "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+        "url": "https://arxiv.org/abs/2210.03629",
+        "publisher": "arXiv (Yao et al, ICLR 2023)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["reasoning + acting", "tool-use prompt patterns"],
+        "applies_to_topics": ["T04"],
+        "notes": "Foundational ReAct paper"
+      },
+      {
+        "id": "codeact-paper",
+        "title": "Executable Code Actions Elicit Better LLM Agents",
+        "url": "https://arxiv.org/abs/2402.01030",
+        "publisher": "arXiv (ICML 2024)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["CodeAct", "code-as-action space", "agent action unification"],
+        "applies_to_topics": ["T04", "T08"],
+        "notes": "CodeAct paper"
+      },
+      {
+        "id": "langgraph-docs",
+        "title": "LangGraph Documentation",
+        "url": "https://docs.langchain.com/oss/python/langgraph/overview",
+        "publisher": "LangChain",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["stateful agent orchestration", "graph-based agent runtime"],
+        "applies_to_topics": ["T05"],
+        "notes": "Old langchain-ai.github.io URL now redirects to docs.langchain.com"
+      },
+      {
+        "id": "openai-assistants-api",
+        "title": "OpenAI Assistants API Overview",
+        "url": "https://platform.openai.com/docs/assistants/overview",
+        "publisher": "OpenAI",
+        "verification_status": "inaccessible",
+        "last_verified": "2026-05-05",
+        "covers": ["Assistants API", "tools, threads, runs"],
+        "applies_to_topics": ["T05"],
+        "notes": "WebFetch blocked (403); URL confirmed live via search. Note: API deprecated, sunsets 2026-08-26"
+      },
+      {
+        "id": "anthropic-artifacts",
+        "title": "Introducing Artifacts",
+        "url": "https://claude.com/blog/artifacts",
+        "publisher": "Anthropic",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["Claude Artifacts", "in-conversation generative workspaces"],
+        "applies_to_topics": ["T07"],
+        "notes": "anthropic.com/news/artifacts 308 to claude.com/blog/artifacts"
+      },
+      {
+        "id": "anthropic-agent-skills-docs",
+        "title": "Agent Skills Overview",
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview",
+        "publisher": "Anthropic",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["Agent Skills", "progressive disclosure", "SKILL.md format", "skill packaging"],
+        "applies_to_topics": ["T07", "T08"],
+        "notes": "Original docs.anthropic.com URL now lives at platform.claude.com"
+      },
+      {
+        "id": "simon-willison-claude-skills",
+        "title": "Claude Skills are awesome, maybe a bigger deal than MCP",
+        "url": "https://simonwillison.net/2025/Oct/16/claude-skills/",
+        "publisher": "Simon Willison's Weblog",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["Skills vs MCP", "filesystem-based agent capabilities", "practitioner perspective"],
+        "applies_to_topics": ["T07"],
+        "notes": "Influential third-party Skills writeup"
+      }
+    ],
+    "rag": [
+      {
+        "id": "graphrag-paper",
+        "title": "From Local to Global: A Graph RAG Approach to Query-Focused Summarization",
+        "url": "https://arxiv.org/abs/2404.16130",
+        "publisher": "arXiv (Microsoft Research)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["GraphRAG", "entity knowledge graphs", "community summaries"],
+        "applies_to_topics": ["T06"],
+        "notes": "Microsoft GraphRAG paper"
+      },
+      {
+        "id": "self-rag-paper",
+        "title": "Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection",
+        "url": "https://arxiv.org/abs/2310.11511",
+        "publisher": "arXiv (ICLR 2024)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["adaptive retrieval", "self-reflection tokens", "RAG critique"],
+        "applies_to_topics": ["T06"],
+        "notes": "Self-RAG paper (Asai et al)"
+      },
+      {
+        "id": "colbertv2-paper",
+        "title": "ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction",
+        "url": "https://arxiv.org/abs/2112.01488",
+        "publisher": "arXiv (NAACL 2022)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["late interaction retrieval", "residual compression", "neural IR"],
+        "applies_to_topics": ["T06"],
+        "notes": "ColBERTv2 paper"
+      },
+      {
+        "id": "anthropic-contextual-retrieval",
+        "title": "Introducing Contextual Retrieval",
+        "url": "https://www.anthropic.com/news/contextual-retrieval",
+        "publisher": "Anthropic",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["contextual embeddings", "contextual BM25", "chunk contextualization"],
+        "applies_to_topics": ["T06"],
+        "notes": "Authoritative — reduces failed retrievals 49-67%"
+      },
+      {
+        "id": "ragas-docs",
+        "title": "Ragas Documentation",
+        "url": "https://docs.ragas.io",
+        "publisher": "Ragas / Exploding Gradients",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["RAG evaluation framework", "faithfulness/relevance metrics"],
+        "applies_to_topics": ["T06"],
+        "notes": "Standard RAG eval library"
+      },
+      {
+        "id": "pinecone-hybrid-search",
+        "title": "Hybrid search",
+        "url": "https://docs.pinecone.io/guides/data/understanding-hybrid-search",
+        "publisher": "Pinecone",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["dense + sparse retrieval", "hybrid index patterns"],
+        "applies_to_topics": ["T06"],
+        "notes": "First-party hybrid retrieval guide"
+      }
+    ],
+    "llmops_eval": [
+      {
+        "id": "otel-genai-semconv",
+        "title": "Semantic conventions for generative AI systems",
+        "url": "https://opentelemetry.io/docs/specs/semconv/gen-ai/",
+        "publisher": "OpenTelemetry",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["OTel GenAI spans", "model/agent telemetry conventions"],
+        "applies_to_topics": ["T09"],
+        "notes": "Cross-vendor LLM observability standard"
+      },
+      {
+        "id": "anthropic-prompt-caching",
+        "title": "Prompt caching",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "publisher": "Anthropic",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["prompt caching", "cache breakpoints", "1h TTL", "cost optimization"],
+        "applies_to_topics": ["T09"],
+        "notes": "docs.anthropic.com URL now lives at platform.claude.com"
+      },
+      {
+        "id": "langfuse-docs",
+        "title": "Langfuse Documentation",
+        "url": "https://langfuse.com/docs",
+        "publisher": "Langfuse",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["LLM tracing", "prompt management", "evaluation"],
+        "applies_to_topics": ["T09"],
+        "notes": "Open-source LLM engineering platform"
+      },
+      {
+        "id": "arize-phoenix-docs",
+        "title": "Arize Phoenix Documentation",
+        "url": "https://arize.com/docs/phoenix",
+        "publisher": "Arize AI",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["LLM observability", "tracing", "evals", "prompt engineering"],
+        "applies_to_topics": ["T09"],
+        "notes": "docs.arize.com 301 to arize.com/docs"
+      },
+      {
+        "id": "mt-bench-paper",
+        "title": "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena",
+        "url": "https://arxiv.org/abs/2306.05685",
+        "publisher": "arXiv (NeurIPS 2023)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["LLM-as-judge", "MT-Bench", "Chatbot Arena", "human-preference correlation"],
+        "applies_to_topics": ["T10"],
+        "notes": "Foundational LLM-as-judge paper"
+      },
+      {
+        "id": "aisi-inspect",
+        "title": "Inspect: An open-source framework for large language model evaluations",
+        "url": "https://inspect.aisi.org.uk/",
+        "publisher": "UK AI Security Institute",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["LLM eval framework", "tasks/solvers/scorers", "200+ pre-built evals"],
+        "applies_to_topics": ["T10"],
+        "notes": "ai-safety-institute.org.uk 301 to aisi.org.uk"
+      },
+      {
+        "id": "openai-evals",
+        "title": "OpenAI Evals",
+        "url": "https://github.com/openai/evals",
+        "publisher": "OpenAI (GitHub)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["LLM eval framework", "open registry of benchmarks"],
+        "applies_to_topics": ["T10"],
+        "notes": "Reference eval framework"
+      }
+    ],
+    "security_compliance": [
+      {
+        "id": "owasp-llm-top-10",
+        "title": "OWASP Top 10 for LLM Applications 2025",
+        "url": "https://genai.owasp.org/llm-top-10/",
+        "publisher": "OWASP",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["prompt injection", "data leakage", "supply chain", "excessive agency"],
+        "applies_to_topics": ["T11"],
+        "notes": "Industry-standard LLM threat list"
+      },
+      {
+        "id": "nist-ai-rmf",
+        "title": "NIST AI Risk Management Framework",
+        "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+        "publisher": "NIST",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["AI risk governance", "GenAI Profile (2024)", "AI RMF 1.0"],
+        "applies_to_topics": ["T11"],
+        "notes": "U.S. authoritative AI risk framework"
+      },
+      {
+        "id": "eu-ai-act",
+        "title": "Regulation (EU) 2024/1689 — Artificial Intelligence Act",
+        "url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj",
+        "publisher": "European Union (EUR-Lex)",
+        "verification_status": "inaccessible",
+        "last_verified": "2026-05-05",
+        "covers": ["EU AI Act full text", "risk-tier obligations", "GPAI rules"],
+        "applies_to_topics": ["T11"],
+        "notes": "EUR-Lex blocks WebFetch (cookie/bot wall); URL canonical and confirmed via search"
+      },
+      {
+        "id": "ms-pyrit",
+        "title": "Microsoft PyRIT (Python Risk Identification Tool for GenAI)",
+        "url": "https://github.com/microsoft/PyRIT",
+        "publisher": "Microsoft (GitHub)",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["AI red-teaming", "automated risk identification", "GenAI security"],
+        "applies_to_topics": ["T11"],
+        "notes": "Azure/PyRIT archived 2026-03-27; canonical now microsoft/PyRIT"
+      },
+      {
+        "id": "indirect-prompt-injection-paper",
+        "title": "Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection",
+        "url": "https://arxiv.org/abs/2302.12173",
+        "publisher": "arXiv (Greshake et al, AISec 2023)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["indirect prompt injection", "real-world LLM exploits", "Bing/code-completion attacks"],
+        "applies_to_topics": ["T11"],
+        "notes": "Foundational indirect prompt injection paper"
+      }
+    ],
+    "process_org_personal": [
+      {
+        "id": "omg-bpmn-2",
+        "title": "Business Process Model And Notation (BPMN) 2.0",
+        "url": "https://www.omg.org/spec/BPMN/2.0/",
+        "publisher": "Object Management Group",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["BPMN 2.0 spec", "process modeling notation"],
+        "applies_to_topics": ["T12"],
+        "notes": "Official spec; superseded by latest at /spec/BPMN but 2.0 remains canonical reference"
+      },
+      {
+        "id": "omg-dmn",
+        "title": "Decision Model and Notation (DMN)",
+        "url": "https://www.omg.org/spec/DMN/",
+        "publisher": "Object Management Group",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["DMN spec", "decision tables", "FEEL expression language"],
+        "applies_to_topics": ["T12"],
+        "notes": "Latest is 1.6 beta (Sep 2024)"
+      },
+      {
+        "id": "team-topologies",
+        "title": "Team Topologies",
+        "url": "https://teamtopologies.com/",
+        "publisher": "Team Topologies Ltd",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["team types", "interaction modes", "cognitive load", "fast flow"],
+        "applies_to_topics": ["T13"],
+        "notes": "Skelton & Pais book + community hub"
+      },
+      {
+        "id": "dora",
+        "title": "DORA — DevOps Research and Assessment",
+        "url": "https://dora.dev",
+        "publisher": "Google Cloud / DORA",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["four key metrics", "Accelerate research", "DORA reports"],
+        "applies_to_topics": ["T13"],
+        "notes": "Authoritative software delivery performance research"
+      },
+      {
+        "id": "fowler-conways-law",
+        "title": "Conway's Law (incl. Inverse Conway Maneuver)",
+        "url": "https://martinfowler.com/bliki/ConwaysLaw.html",
+        "publisher": "Martin Fowler",
+        "verification_status": "redirect",
+        "last_verified": "2026-05-05",
+        "covers": ["Conway's Law", "Inverse Conway Maneuver", "team-architecture coupling"],
+        "applies_to_topics": ["T13"],
+        "notes": "Fowler has no dedicated InverseConwayManeuver page; canonical discussion is on ConwaysLaw"
+      },
+      {
+        "id": "staffeng",
+        "title": "Staff Engineer: Leadership beyond the management track",
+        "url": "https://staffeng.com",
+        "publisher": "Will Larson",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["staff+ engineer roles", "career narratives", "engineering strategy"],
+        "applies_to_topics": ["T15"],
+        "notes": "Companion site to Larson's book"
+      },
+      {
+        "id": "staff-engineers-path",
+        "title": "The Staff Engineer's Path",
+        "url": "https://www.oreilly.com/library/view/the-staff-engineers/9781098118723/",
+        "publisher": "O'Reilly (Tanya Reilly)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["technical leadership", "scope/influence", "strategic thinking"],
+        "applies_to_topics": ["T15"],
+        "notes": "Publisher listing for Reilly book (2022)"
+      },
+      {
+        "id": "april-dunford-obviously-awesome",
+        "title": "Obviously Awesome — Product Positioning",
+        "url": "https://www.aprildunford.com/obviously-awesome",
+        "publisher": "April Dunford",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["B2B positioning framework", "market category choice"],
+        "applies_to_topics": ["T14"],
+        "notes": "Author's official book page"
+      },
+      {
+        "id": "commoncog-career-moats",
+        "title": "Career Moats",
+        "url": "https://commoncog.com/career-moats/",
+        "publisher": "Commoncog (Cedric Chin)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["career strategy", "competitive advantage building"],
+        "applies_to_topics": ["T15"],
+        "notes": "8-chapter living guide"
+      },
+      {
+        "id": "pragmatic-engineer",
+        "title": "The Pragmatic Engineer",
+        "url": "https://newsletter.pragmaticengineer.com/",
+        "publisher": "Gergely Orosz (Substack)",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["Big Tech engineering practice", "career & leadership reporting"],
+        "applies_to_topics": ["T15"],
+        "notes": "Top-tier industry newsletter"
+      },
+      {
+        "id": "thoughtworks-tech-radar",
+        "title": "Thoughtworks Technology Radar",
+        "url": "https://www.thoughtworks.com/radar",
+        "publisher": "Thoughtworks",
+        "verification_status": "verified",
+        "last_verified": "2026-05-05",
+        "covers": ["technology adoption guidance", "Adopt/Trial/Assess/Hold rings", "Platform-as-a-Product"],
+        "applies_to_topics": ["T13"],
+        "notes": "Twice-yearly tech landscape snapshot"
+      }
+    ]
+  },
+  "verification_summary": {
+    "total": 46,
+    "verified": 33,
+    "redirect": 11,
+    "dead": 0,
+    "inaccessible": 2
+  }
+}

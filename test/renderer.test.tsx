@@ -10,43 +10,43 @@ import type { ProgressSummary, SeedReloadEvent, StageWithTopics, TopicDetail } f
 const outline: StageWithTopics[] = [
   {
     id: 'S1',
-    name: '第一性原理',
-    description: '基础阶段',
+    name: '平台底座与私有化基础设施',
+    description: '平台基础阶段',
     sortOrder: 1,
     topics: [
       {
         id: 'T01',
         stageId: 'S1',
-        name: 'Compute-bound vs Memory-bound：推理的第一性原理',
+        name: '企业 Agent 平台总体架构',
         sortOrder: 1,
-        difficulty: 2,
-        studyTimeMinutes: 45,
+        difficulty: 3,
+        studyTimeMinutes: 40,
         status: 'not_started'
       },
       {
         id: 'T02',
         stageId: 'S1',
-        name: 'KV Cache 与显存计算',
+        name: '私有化 LLM 基础设施',
         sortOrder: 2,
-        difficulty: 2,
-        studyTimeMinutes: 40,
+        difficulty: 3,
+        studyTimeMinutes: 45,
         status: 'not_started'
       }
     ]
   },
   {
     id: 'S2',
-    name: '昇腾硬件与推理引擎',
-    description: '平台阶段',
+    name: '能力生态与企业集成',
+    description: '生态阶段',
     sortOrder: 2,
     topics: [
       {
-        id: 'T04',
+        id: 'T05',
         stageId: 'S2',
-        name: 'Ascend 910B 系列硬件规格与分级策略',
+        name: 'Skill 生态设计',
         sortOrder: 1,
-        difficulty: 2,
-        studyTimeMinutes: 35,
+        difficulty: 3,
+        studyTimeMinutes: 45,
         status: 'completed'
       }
     ]
@@ -55,44 +55,44 @@ const outline: StageWithTopics[] = [
 
 const topic: TopicDetail = {
   ...outline[0].topics[0],
-  why: '所有推理优化决策的根基。',
-  realWorldConnection: 'MTP 能提升 memory-bound 场景效率。',
-  keyPoints: ['Arithmetic Intensity = FLOPs / Bytes', 'Decode 阶段通常是 memory-bound'],
+  why: '理解从算力到业务工作台的完整平台分层。',
+  realWorldConnection: '平台蓝图是跨基础设施、数据、安全、IT 和业务团队协同的共同地图。',
+  keyPoints: ['企业 Agent 平台要覆盖基础设施、Runtime、Skill 和工作台', '平台负责人要能判断哪些能力必须平台化'],
   prerequisites: [],
   bodyMd: [
-    '## 核心判断',
+    '## 角色定位与问题场景',
     '',
-    '先判断瓶颈是在算力还是带宽，再决定后续优化路线。',
+    'Enterprise Agent Platform Builder 要把 LLM 变成企业级生产力基础设施。',
     '',
     '```text',
-    'Arithmetic Intensity = FLOPs / Bytes',
+    'LLM → Agent Runtime → Skill → Tool → Workbench',
     '```'
   ].join('\n'),
   sources: []
 };
 
 const progress: ProgressSummary = {
-  totalTopics: 21,
+  totalTopics: 15,
   completedTopics: 1,
   inProgressTopics: 0,
-  notStartedTopics: 20,
+  notStartedTopics: 14,
   stageProgress: [
-    { stageId: 'S1', stageName: '第一性原理', totalTopics: 2, completedTopics: 0 },
-    { stageId: 'S2', stageName: '昇腾硬件与推理引擎', totalTopics: 1, completedTopics: 1 }
+    { stageId: 'S1', stageName: '平台底座与私有化基础设施', totalTopics: 2, completedTopics: 0 },
+    { stageId: 'S2', stageName: '能力生态与企业集成', totalTopics: 1, completedTopics: 1 }
   ]
 };
 
 const t02Topic: TopicDetail = {
   id: 'T02',
   stageId: 'S1',
-  name: 'KV Cache 与显存计算',
+  name: '私有化 LLM 基础设施',
   sortOrder: 2,
-  difficulty: 2,
-  studyTimeMinutes: 40,
+  difficulty: 3,
+  studyTimeMinutes: 45,
   status: 'not_started',
-  why: 'KV Cache 直接决定并发能力。',
-  realWorldConnection: '910B3 与 910B4 的容量差异会直接影响部署策略。',
-  keyPoints: ['KV Cache 公式：2 × layers × kv_heads × head_dim × seq_len × batch'],
+  why: '大型企业内网环境通常不能简单依赖外部 API。',
+  realWorldConnection: '私有化基础设施能力决定平台能否在内网约束下稳定供给模型能力。',
+  keyPoints: ['私有化 LLM 基础设施要覆盖算力、模型部署和在线服务'],
   prerequisites: [outline[0].topics[0]],
   bodyMd: null,
   sources: []
@@ -137,19 +137,22 @@ describe('App', () => {
   it('loads the learning outline, body markdown, and stage progress', async () => {
     render(<App />);
 
-    expect(await screen.findByText('AI Infra 学习系统')).toBeInTheDocument();
+    expect(await screen.findByText('Enterprise Agent Platform Skills')).toBeInTheDocument();
     expect(screen.getByText('Knowledge Workspace')).toBeInTheDocument();
     expect(
-      await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' })
+      await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' })
     ).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: '核心判断' })).toBeInTheDocument();
-    expect(screen.getByText('先判断瓶颈是在算力还是带宽，再决定后续优化路线。')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '角色定位与问题场景' })).toBeInTheDocument();
+    expect(screen.getByText('Enterprise Agent Platform Builder 要把 LLM 变成企业级生产力基础设施。')).toBeInTheDocument();
     expect(screen.getByLabelText('学习进度概览')).toBeInTheDocument();
-    expect(screen.getByText('5%')).toBeInTheDocument();
-    expect(screen.getByText('1/21 已完成 · 0 学习中')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: '总学习进度' })).toHaveAttribute('value', '5');
+    expect(screen.getByText('7%')).toBeInTheDocument();
+    expect(screen.getByText('1/15 已完成 · 0 学习中')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '总学习进度' })).toHaveAttribute('value', '7');
     const toc = screen.getByRole('region', { name: '本节目录' });
-    expect(within(toc).getByRole('link', { name: '核心判断' })).toHaveAttribute('href', '#section-1-核心判断');
+    expect(within(toc).getByRole('link', { name: '角色定位与问题场景' })).toHaveAttribute(
+      'href',
+      '#section-1-角色定位与问题场景'
+    );
     expect(screen.getByRole('region', { name: '学习检查点' })).toBeInTheDocument();
   });
 
@@ -193,14 +196,16 @@ describe('App', () => {
   it('reloads the current topic when the development seed file changes', async () => {
     const reloadedTopic = {
       ...topic,
-      bodyMd: '## 核心判断\n\n热重载后的正文。'
+      bodyMd: '## 角色定位与问题场景\n\n热重载后的正文。'
     };
     vi.mocked(window.learning.getTopic)
       .mockResolvedValueOnce(topic)
       .mockResolvedValueOnce(reloadedTopic);
 
     render(<App />);
-    expect(await screen.findByText('先判断瓶颈是在算力还是带宽，再决定后续优化路线。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Enterprise Agent Platform Builder 要把 LLM 变成企业级生产力基础设施。')
+    ).toBeInTheDocument();
 
     await act(async () => {
       seedReloadCallback?.({ ok: true, reloadedAt: Date.now() });
@@ -214,7 +219,7 @@ describe('App', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
     await user.click(screen.getByRole('button', { name: '已完成' }));
 
     await waitFor(() => {
@@ -258,7 +263,7 @@ describe('App', () => {
       .mockRejectedValueOnce(new Error('Topic fetch failed'));
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
     await user.click(screen.getByRole('button', { name: /T03.*第二专题/ }));
 
     expect(await screen.findByText('Topic fetch failed')).toBeInTheDocument();
@@ -269,7 +274,7 @@ describe('App', () => {
     vi.mocked(window.learning.updateTopicStatus).mockRejectedValue(new Error('Status update failed'));
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
     await user.click(screen.getByRole('button', { name: '已完成' }));
 
     expect(await screen.findByText('Status update failed')).toBeInTheDocument();
@@ -281,25 +286,25 @@ describe('App', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
 
     await user.click(screen.getByRole('tab', { name: /路线图/ }));
     expect(await screen.findByTestId('roadmap-root')).toBeInTheDocument();
     expect(window.learning.getRoadmapGraph).toHaveBeenCalled();
 
     await user.click(screen.getByRole('tab', { name: /列表/ }));
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
   });
 
   it('shows a fallback message when a topic body is not ready yet', async () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
 
-    await user.click(screen.getByRole('button', { name: /T02.*KV Cache 与显存计算/ }));
+    await user.click(screen.getByRole('button', { name: /T02.*私有化 LLM 基础设施/ }));
 
-    await screen.findByRole('heading', { level: 3, name: 'KV Cache 与显存计算' });
+    await screen.findByRole('heading', { level: 3, name: '私有化 LLM 基础设施' });
     const detailSection = screen.getByLabelText('详细内容');
     expect(within(detailSection).getByText('正文内容待补充。')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '前置知识' })).toBeInTheDocument();
@@ -309,19 +314,19 @@ describe('App', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
 
-    await user.click(screen.getByRole('button', { name: /T02.*KV Cache 与显存计算/ }));
+    await user.click(screen.getByRole('button', { name: /T02.*私有化 LLM 基础设施/ }));
 
     await waitFor(() => {
       expect(window.learning.getTopic).toHaveBeenCalledWith('T02');
     });
-    await screen.findByRole('heading', { level: 3, name: 'KV Cache 与显存计算' });
+    await screen.findByRole('heading', { level: 3, name: '私有化 LLM 基础设施' });
   });
 
   it('shows an empty sources state when the topic carries no sources', async () => {
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
 
     const sources = screen.getByRole('region', { name: '可信来源' });
     expect(within(sources).getByText('暂无来源信息')).toBeInTheDocument();
@@ -332,39 +337,39 @@ describe('App', () => {
       ...topic,
       sources: [
         {
-          id: 'qwen3-next-card',
-          title: 'Qwen3-Next-80B-A3B-Instruct Model Card',
-          url: 'https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct',
-          publisher: 'Hugging Face / Qwen Team',
-          last_verified: '2026-04-28',
+          id: 'enterprise-agent-platform-skills',
+          title: 'Enterprise Agent Platform Skills',
+          url: 'https://chatgpt.com/c/69f9bff1-3938-8393-8fb3-1659afa330e2',
+          publisher: 'User-provided clipping',
+          last_verified: '2026-05-05',
           confidence: 'high',
-          covers: ['Qwen3-Next 系列总参 80B / 激活 3B', '48 层 = 12 × (3+1)']
+          covers: ['Enterprise Agent Platform Builder 的角色定位', '15 类关键能力']
         },
         {
           id: 'vllm-pr',
-          title: 'vLLM Gated DeltaNet 共享层 PR',
-          url: 'https://github.com/vllm-project/vllm/pull/37975',
-          publisher: 'vLLM Project',
-          last_verified: '2026-04-28',
+          title: 'Platform governance note',
+          url: 'https://example.com/platform-governance',
+          publisher: 'Internal reference',
+          last_verified: '2026-05-05',
           confidence: 'medium',
-          covers: ['vLLM 已为 Qwen3-Next 共用 GatedDeltaNetAttention 实现']
+          covers: ['Skill、Tool、评测、安全和组织推进的治理框架']
         }
       ]
     };
     vi.mocked(window.learning.getTopic).mockResolvedValue(sourcedTopic);
 
     render(<App />);
-    await screen.findByRole('heading', { level: 3, name: 'Compute-bound vs Memory-bound：推理的第一性原理' });
+    await screen.findByRole('heading', { level: 3, name: '企业 Agent 平台总体架构' });
 
     const sources = await screen.findByRole('region', { name: '可信来源' });
     const links = within(sources).getAllByRole('link');
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute('href', 'https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct');
+    expect(links[0]).toHaveAttribute('href', 'https://chatgpt.com/c/69f9bff1-3938-8393-8fb3-1659afa330e2');
     expect(links[0]).toHaveAttribute('target', '_blank');
     expect(links[0].getAttribute('rel') ?? '').toContain('noopener');
     expect(within(sources).getByText('官方来源')).toBeInTheDocument();
-    expect(within(sources).getByText('社区/二手')).toBeInTheDocument();
-    expect(within(sources).getByText(/Qwen3-Next 系列总参 80B \/ 激活 3B/)).toBeInTheDocument();
-    expect(within(sources).getByText('vLLM Project')).toBeInTheDocument();
+    expect(within(sources).getByText('参考来源')).toBeInTheDocument();
+    expect(within(sources).getByText(/Enterprise Agent Platform Builder 的角色定位/)).toBeInTheDocument();
+    expect(within(sources).getByText('Internal reference')).toBeInTheDocument();
   });
 });

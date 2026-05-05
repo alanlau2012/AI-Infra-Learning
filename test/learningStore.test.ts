@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('learning store', () => {
-  it('loads the complete seed outline and topic details without SQLite', () => {
+  it('loads the Enterprise Agent Platform Skills outline and topic details without SQLite', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const outline = store.getOutline();
@@ -34,14 +34,16 @@ describe('learning store', () => {
     const progress = store.getProgress();
 
     expect(outline).toHaveLength(4);
+    expect(outline[0].name).toBe('平台底座与私有化基础设施');
     expect(outline[0].topics[0].id).toBe('T01');
-    expect(outline.flatMap((stage) => stage.topics)).toHaveLength(21);
-    expect(topic.name).toContain('Compute-bound');
+    expect(outline.flatMap((stage) => stage.topics)).toHaveLength(15);
+    expect(topic.name).toContain('企业 Agent 平台总体架构');
     expect(topic.keyPoints).toHaveLength(seedData.topics[0].key_points.length);
-    expect(topic.bodyMd).toContain('推理优化先不要问');
-    expect(topic.bodyMd).not.toMatch(/\?{4,}/);
+    expect(topic.bodyMd).toContain('Enterprise Agent Platform Builder');
+    expect(topic.bodyMd).toContain('## 角色定位与问题场景');
+    expect(topic.bodyMd).not.toContain('learning-asset://');
     expect(topic.status).toBe('not_started');
-    expect(progress.totalTopics).toBe(21);
+    expect(progress.totalTopics).toBe(15);
     expect(progress.completedTopics).toBe(0);
   });
 
@@ -125,105 +127,75 @@ describe('learning store', () => {
     ).toThrow(/prerequisite/i);
   });
 
-  it('builds the roadmap graph from seed prerequisites and main track metadata', () => {
+  it('builds the roadmap graph from new seed prerequisites and main track metadata', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const graph = store.getRoadmapGraph();
 
     expect(graph.mainTrack).toEqual(seedData.learning_paths?.main_track?.sequence);
     expect(graph.edges).toContainEqual({ from: 'T01', to: 'T02' });
-    expect(graph.edges).toContainEqual({ from: 'T17', to: 'T18' });
+    expect(graph.edges).toContainEqual({ from: 'T09', to: 'T10' });
+    expect(graph.edges).toContainEqual({ from: 'T14', to: 'T15' });
   });
 
-  it('ships expanded markdown content and a bundled diagram for every topic', () => {
-    const diagramPattern = /!\[[^\]]+\]\(learning-asset:\/\/topic-diagrams\/([a-z0-9-]+\.svg)\)/;
+  it('ships framework markdown content without bundled diagrams or interactive gates', () => {
     const expectedHeadings = [
-      '## 核心判断与问题场景',
-      '## 机制、公式与推导',
-      '## 昇腾/GTS 落地',
-      '## 工程诊断、边界与误区',
-      '## 专家自检与小结'
+      '## 角色定位与问题场景',
+      '## 需要掌握',
+      '## 关键判断力',
+      '## 典型产出',
+      '## 自检问题'
     ];
 
     for (const topic of seedData.topics) {
       expect(topic.body_md?.trim(), topic.id).toBeTruthy();
       expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
-      // Topics with a gate add a "## 判断力检验" H2 section, so 5 or 6 are both valid.
-      const h2Count = topic.body_md?.match(/^##\s+/gm)?.length ?? 0;
-      const allowedH2 = topic.gate ? [5, 6] : [5];
-      expect(allowedH2, topic.id).toContain(h2Count);
+      expect(topic.body_md, topic.id).not.toContain('learning-asset://');
+      expect(topic.body_md, topic.id).not.toContain(':::interactive');
+      expect(topic.gate, topic.id).toBeUndefined();
+      expect(topic.body_md?.match(/^##\s+/gm)?.length, topic.id).toBe(5);
       for (const heading of expectedHeadings) {
         expect(topic.body_md, topic.id).toContain(heading);
       }
-      // Topics with an interactive directive replace the static SVG; otherwise
-      // the diagram image must be present and bundled.
-      const hasDirective = /^:::interactive\{[^}]*\}\s*$/m.test(topic.body_md ?? '');
-      if (!hasDirective) {
-        const match = topic.body_md?.match(diagramPattern);
-        expect(match?.[1], topic.id).toBeTruthy();
-        expect(fs.existsSync(path.join(process.cwd(), 'resources', 'topic-diagrams', match?.[1] ?? ''))).toBe(true);
-      }
     }
   });
 
-  it('exposes the sources array for topics that declare authoritative references', () => {
+  it('exposes user-provided source records for the framework topics', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
-    const t20 = store.getTopic('T20');
+    const t01 = store.getTopic('T01');
 
-    expect(t20.sources.length).toBeGreaterThanOrEqual(3);
-    for (const source of t20.sources) {
-      expect(source.id).toMatch(/^[a-z0-9-]+$/);
-      expect(source.url).toMatch(/^https?:\/\//);
-      expect(['high', 'medium', 'low']).toContain(source.confidence);
-      expect(source.last_verified).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(Array.isArray(source.covers)).toBe(true);
-      expect(source.covers.length).toBeGreaterThan(0);
-    }
+    expect(t01.sources).toHaveLength(1);
+    expect(t01.sources[0]).toMatchObject({
+      id: 'enterprise-agent-platform-skills',
+      title: 'Enterprise Agent Platform Skills',
+      publisher: 'User-provided clipping',
+      confidence: 'medium',
+      last_verified: '2026-05-05'
+    });
+    expect(t01.sources[0].url).toMatch(/^https?:\/\//);
+    expect(t01.sources[0].covers.length).toBeGreaterThan(0);
   });
 
-  it('documents the T03 Qwen MoE example with verified sources', () => {
-    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
+  it('documents the user clipping snapshot used for the Enterprise Agent Platform Skills framework', () => {
+    const snapshotPath = path.join(
+      process.cwd(),
+      'resources',
+      'source-snapshots',
+      'enterprise-agent-platform-skills.md'
+    );
 
-    const t03 = store.getTopic('T03');
-    const combinedText = [t03.name, t03.realWorldConnection, ...t03.keyPoints, t03.bodyMd].join('\n');
-
-    expect(fs.existsSync(path.join(process.cwd(), 'resources', 'source-snapshots', 'T03.md'))).toBe(true);
-    expect(combinedText).not.toContain('Qwen3.5-35B-A3B');
-    expect(combinedText).toContain('Qwen3-30B-A3B');
-    expect(t03.sources.some((source) => source.id === 'qwen3-tech-report')).toBe(true);
-    expect(t03.bodyMd).toContain('[!FACT]');
-  });
-
-  it('documents the T16 lifecycle example with verified Qwen sources and an assumed MiniMax note', () => {
-    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
-
-    const t16 = store.getTopic('T16');
-    const combinedText = [t16.name, t16.realWorldConnection, ...t16.keyPoints, t16.bodyMd].join('\n');
-
-    expect(fs.existsSync(path.join(process.cwd(), 'resources', 'source-snapshots', 'T16.md'))).toBe(true);
-    expect(combinedText).not.toContain('Qwen3.6-27B');
-    expect(combinedText).toContain('Qwen3-Next-80B-A3B');
-    expect(t16.sources.some((source) => source.id === 'qwen3-next-80b-card')).toBe(true);
-    expect(t16.bodyMd).toMatch(/> \[!ASSUMPTION\][\s\S]*MiniMax/);
-  });
-
-  it('returns an empty sources array for topics without an explicit sources field', () => {
-    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
-
-    // T18 is a strategy topic that intentionally has no external sources field.
-    const t18 = store.getTopic('T18');
-
-    expect(t18.sources).toEqual([]);
+    expect(fs.existsSync(snapshotPath)).toBe(true);
+    expect(fs.readFileSync(snapshotPath, 'utf8')).toContain('15 类关键能力');
   });
 
   it('deep-clones source covers so external mutation does not leak back into the store', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
-    const first = store.getTopic('T20');
+    const first = store.getTopic('T01');
     first.sources[0].covers.push('mutation');
 
-    const second = store.getTopic('T20');
+    const second = store.getTopic('T01');
     expect(second.sources[0].covers).not.toContain('mutation');
   });
 });

@@ -29,7 +29,7 @@ const statusIcons: Record<StudyStatus, ReactElement> = {
 
 const confidenceLabels: Record<SourceConfidence, string> = {
   high: '官方来源',
-  medium: '社区/二手',
+  medium: '参考来源',
   low: '示例假设'
 };
 
@@ -226,7 +226,7 @@ function difficultyLabel(difficulty: number) {
 function buildCheckpoints(topic: TopicDetail) {
   const checkpoints = topic.keyPoints.slice(0, 3).map((point) => `能否解释：${point}`);
   if (topic.realWorldConnection) {
-    checkpoints.push('能否把本节结论映射到 GTS 生产场景？');
+    checkpoints.push('能否把本节结论映射到企业 Agent 平台场景？');
   }
 
   return checkpoints.length ? checkpoints : ['能否说清本节的核心判断？'];

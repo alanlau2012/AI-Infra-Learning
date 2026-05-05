@@ -13,8 +13,8 @@ export default function Sidebar({ outline, selectedTopicId, onSelectTopic }: Pro
       <div className="brand">
         <BookOpen aria-hidden="true" size={24} />
         <div>
-          <h1>AI Infra 学习系统</h1>
-          <p>Windows 本地学习版</p>
+          <h1>Enterprise Agent Platform Skills</h1>
+          <p>企业 Agent 平台能力学习版</p>
         </div>
       </div>
 

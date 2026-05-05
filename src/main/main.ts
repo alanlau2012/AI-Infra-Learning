@@ -90,7 +90,7 @@ if (!gotSingleInstanceLock) {
       const hint = app.isPackaged
         ? '请反馈日志文件或重新安装应用。'
         : '请从项目根目录在终端中执行：npm start';
-      dialog.showErrorBox('AI Infra Learning 启动失败', `${message}\n\n${hint}`);
+      dialog.showErrorBox('Enterprise Agent Platform Skills 启动失败', `${message}\n\n${hint}`);
       app.quit();
     }
   });
@@ -120,7 +120,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    title: 'AI Infra Learning',
+    title: 'Enterprise Agent Platform Skills',
     backgroundColor: getWindowBackgroundColor(settingsStore?.getSettings().theme ?? 'light'),
     webPreferences: getSecureWebPreferences(path.join(__dirname, 'preload.js'))
   });
@@ -180,7 +180,7 @@ function createWindow() {
         return;
       }
       dialog.showErrorBox(
-        'AI Infra Learning 加载失败',
+        'Enterprise Agent Platform Skills 加载失败',
         `渲染页面加载失败：${errorDescription}\n\n请反馈日志文件或重新安装应用。`
       );
     });

@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chunked Prefill · 把 prefill 切碎以保住 decode 的稳态</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root{
+  --bg:#faf8f3;
+  --bg-ink:#f3efe5;
+  --rule:rgba(26,25,24,0.14);
+  --rule-strong:rgba(26,25,24,0.32);
+  --ink:#1a1918;
+  --ink-soft:#4a4641;
+  --ink-mute:#7a746c;
+  --accent:#a8322d;       /* oxblood */
+  --accent-soft:#c5534f;
+  --blue:#1f3a5f;
+  --blue-soft:#6b89a8;
+  --sage:#6e8062;
+  --ochre:#b8823a;
+  --max:760px;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);}
+body{
+  font-family:'Newsreader',Georgia,serif;
+  font-size:17px;
+  line-height:1.72;
+  font-weight:400;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(168,50,45,0.35);}
+a:hover{border-bottom-color:var(--accent);}
+
+.wrap{max-width:var(--max);margin:0 auto;padding:64px 28px 120px;}
+
+/* ——— masthead ——— */
+.masthead{
+  border-top:3px double var(--ink);
+  border-bottom:1px solid var(--rule);
+  padding:14px 0 12px;
+  margin-bottom:48px;
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color:var(--ink-soft);
+}
+.masthead .vol{color:var(--accent);font-weight:600;}
+
+/* ——— title block ——— */
+.title{
+  font-family:'Newsreader',serif;
+  font-weight:500;
+  font-size:46px;
+  line-height:1.08;
+  letter-spacing:-0.012em;
+  margin:8px 0 14px;
+}
+.title em{font-style:italic;color:var(--accent);font-weight:500;}
+.dek{
+  font-family:'Newsreader',serif;
+  font-style:italic;
+  font-size:19px;
+  color:var(--ink-soft);
+  line-height:1.55;
+  margin:0 0 28px;
+  max-width:640px;
+}
+.byline{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  letter-spacing:0.16em;
+  text-transform:uppercase;
+  color:var(--ink-mute);
+  border-top:1px solid var(--rule);
+  border-bottom:1px solid var(--rule);
+  padding:10px 0;
+  margin-bottom:48px;
+  display:flex;
+  gap:20px;
+}
+.byline span{display:flex;gap:6px;align-items:baseline;}
+.byline b{color:var(--ink);font-weight:600;letter-spacing:0.02em;text-transform:none;font-family:'Newsreader',serif;font-size:14px;}
+
+/* ——— TOC ——— */
+.toc{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:12px;
+  letter-spacing:0.04em;
+  color:var(--ink-soft);
+  margin:0 0 56px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:14px;
+  border-top:1px solid var(--rule);
+  border-bottom:1px solid var(--rule);
+  padding:18px 0;
+}
+.toc a{
+  color:var(--ink);
+  border:none;
+  display:block;
+  line-height:1.4;
+}
+.toc a span{display:block;color:var(--accent);font-size:10px;letter-spacing:0.18em;font-weight:600;margin-bottom:3px;}
+.toc a:hover{color:var(--accent);}
+
+/* ——— section ——— */
+.section{margin:80px 0 0;}
+.section-head{
+  display:flex;
+  align-items:baseline;
+  gap:18px;
+  border-bottom:1px solid var(--rule);
+  padding-bottom:10px;
+  margin-bottom:24px;
+}
+.section-num{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  letter-spacing:0.24em;
+  color:var(--accent);
+  font-weight:600;
+  flex-shrink:0;
+  width:42px;
+}
+.section-title{
+  font-family:'Newsreader',serif;
+  font-weight:500;
+  font-size:28px;
+  line-height:1.2;
+  letter-spacing:-0.005em;
+  margin:0;
+}
+.section p{margin:0 0 18px;}
+
+/* ——— figure ——— */
+.figure{margin:32px 0 12px;}
+.figure canvas{
+  display:block;
+  width:100%;
+  background:var(--bg-ink);
+  border:1px solid var(--rule);
+}
+.caption{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:12px;
+  color:var(--ink-mute);
+  line-height:1.55;
+  margin-top:10px;
+  padding-left:14px;
+  border-left:2px solid var(--rule-strong);
+}
+.caption b{color:var(--ink-soft);font-weight:600;text-transform:uppercase;letter-spacing:0.1em;font-size:10.5px;margin-right:6px;}
+
+/* ——— controls ——— */
+.controls{
+  margin:18px 0 8px;
+  padding:14px 16px;
+  background:var(--bg-ink);
+  border:1px solid var(--rule);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.ctl-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.ctl-label{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:var(--ink-soft);
+  min-width:130px;
+}
+.ctl-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;
+  color:var(--accent);
+  font-weight:500;
+  min-width:84px;
+  text-align:right;
+}
+input[type=range]{
+  -webkit-appearance:none;
+  flex:1;
+  height:2px;
+  background:var(--rule-strong);
+  outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--bg);
+  border:1.5px solid var(--accent);
+  cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--bg);border:1.5px solid var(--accent);cursor:pointer;
+}
+
+button.play{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  background:transparent;
+  border:1px solid var(--ink);
+  color:var(--ink);
+  padding:7px 14px 7px 30px;
+  cursor:pointer;
+  position:relative;
+  transition:background 160ms,color 160ms;
+}
+button.play:hover{background:var(--ink);color:var(--bg);}
+button.play::before{
+  content:"";
+  position:absolute;
+  left:12px;top:50%;
+  width:8px;height:8px;
+  border-style:solid;
+  border-width:4px 0 4px 7px;
+  border-color:transparent transparent transparent currentColor;
+  transform:translateY(-50%);
+}
+button.play.pause::before{
+  border:none;
+  width:6px;height:8px;
+  border-left:2px solid currentColor;
+  border-right:2px solid currentColor;
+}
+
+/* ——— tabs ——— */
+.tabs{
+  display:flex;
+  gap:0;
+  border-bottom:1px solid var(--rule);
+  margin:24px 0 0;
+}
+.tab{
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11.5px;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  background:transparent;
+  border:none;
+  padding:10px 18px;
+  cursor:pointer;
+  color:var(--ink-mute);
+  border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* ——— insight ——— */
+.insight{
+  margin:28px 0;
+  padding:0 0 0 22px;
+  border-left:3px solid var(--accent);
+  font-family:'Newsreader',serif;
+  font-style:italic;
+  font-size:18px;
+  line-height:1.6;
+  color:var(--ink-soft);
+}
+.insight b{font-style:normal;color:var(--ink);font-weight:600;}
+
+/* ——— inline ——— */
+code,.mono{font-family:'JetBrains Mono',monospace;font-size:0.92em;letter-spacing:0.01em;}
+.kw{color:var(--accent);font-weight:500;}
+
+/* ——— back-of-envelope card ——— */
+.envelope{
+  border-top:2px solid var(--ink);
+  border-bottom:1px solid var(--ink);
+  padding:18px 0 14px;
+  margin:30px 0;
+  font-family:'Instrument Sans',sans-serif;
+}
+.envelope-title{
+  font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--accent);font-weight:600;margin-bottom:10px;
+}
+.envelope-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 26px;}
+.env-item{display:flex;justify-content:space-between;border-bottom:1px dotted var(--rule-strong);padding:5px 0;}
+.env-item span:first-child{color:var(--ink-soft);font-size:13px;}
+.env-item span:last-child{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink);}
+
+/* ——— takeaways ——— */
+.takeaways{
+  margin:60px 0 30px;
+  padding:32px 0 0;
+  border-top:1px solid var(--rule-strong);
+}
+.takeaways .section-num{color:var(--ink);}
+.takeaways p{font-size:16.5px;}
+.takeaways p strong{
+  font-family:'Instrument Sans',sans-serif;
+  font-weight:600;
+  font-size:11px;
+  letter-spacing:0.16em;
+  text-transform:uppercase;
+  color:var(--accent);
+  display:inline-block;
+  margin-right:10px;
+  vertical-align:0.12em;
+}
+
+/* ——— footer ——— */
+.colophon{
+  margin-top:80px;
+  border-top:1px solid var(--rule);
+  padding-top:18px;
+  font-family:'Instrument Sans',sans-serif;
+  font-size:11px;
+  color:var(--ink-mute);
+  letter-spacing:0.06em;
+  display:flex;justify-content:space-between;
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important;transition:none !important;}
+}
+@media (max-width:640px){
+  .title{font-size:34px;}
+  .toc{grid-template-columns:1fr 1fr;}
+  .byline{flex-wrap:wrap;gap:10px 20px;}
+  .envelope-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <span>AI Infra · Daily Lesson</span>
+    <span class="vol">No. 09 · 第 8 期</span>
+    <span>2026·05·09</span>
+  </div>
+
+  <h1 class="title">把 prefill 切碎,<br/>才能让 decode <em>不失稳态</em></h1>
+  <p class="dek">长 prompt 一进来,decode 队列里所有用户的 TPOT 都被它劫持。Chunked prefill 是把这把"刀"分成薄片,与 decode token 同批共舞——以微小的 prefill 减速换取整体延迟分布的平滑。</p>
+
+  <div class="byline">
+    <span><b>Topic</b> Chunked Prefill</span>
+    <span><b>读时</b> 约 6 分钟</span>
+    <span><b>前置</b> Prefill/Decode · Continuous Batching</span>
+  </div>
+
+  <nav class="toc">
+    <a href="#s1"><span>I.</span>单体 prefill 的"刀刃效应"</a>
+    <a href="#s2"><span>II.</span>切片:从一刀到 N 片</a>
+    <a href="#s3"><span>III.</span>同批混跑:prefill ⊕ decode</a>
+    <a href="#s4"><span>IV.</span>Chunk size 这个旋钮</a>
+    <a href="#s5"><span>V.</span>当它失效:与 PD 分离的边界</a>
+  </nav>
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="s1">
+    <header class="section-head">
+      <div class="section-num">I.</div>
+      <h2 class="section-title">单体 prefill 的"刀刃效应"</h2>
+    </header>
+
+    <p>Decode 是一个稳态过程:每个 step 大约 <span class="mono">25–60 ms</span>,稳稳地往下吐 token。但只要一个新请求带着 <span class="mono">4096</span> token 的 prompt 进来,GPU/NPU 就被它独占——一个 step 可能跑上 <span class="mono">1–3 秒</span>。在这段时间里,<em>所有正在 decode 的用户的下一个 token 都被卡住</em>。这就是"prefill 刀刃":TTFT 看似分配给了新请求,代价却由整个 batch 的 TPOT 一起买单。</p>
+
+    <p>下面这张图是一个 in-flight batch 的时间线:四个老用户在稳态 decode,第 8 帧来了一位带长 prompt 的新用户。点击播放,看 decode 是怎么被"刀"住的。</p>
+
+    <div class="figure">
+      <canvas id="cv1" width="720" height="220"></canvas>
+      <div class="caption"><b>Fig. 1</b>横轴是 batch step,蓝色格子是 decode token,红色长格子是单体 prefill。Prefill 跨越了 8 个 step 的时长,期间 R1–R4 全部停摆——TPOT 在那一段从 ~30 ms 跳到 ~600 ms。</div>
+    </div>
+
+    <div class="ctl-row">
+      <button class="play" id="play1">Play</button>
+    </div>
+
+    <div class="insight"><b>核心症状:</b>不是 prefill 本身慢,是它"非抢占地"独占了一个 batch step,把同 batch 的 decode 一并冻结。这是 throughput 与 latency 直接冲突的经典场景。</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="s2">
+    <header class="section-head">
+      <div class="section-num">II.</div>
+      <h2 class="section-title">切片:把一刀分成 N 片</h2>
+    </header>
+
+    <p>解决思路看起来很朴素:既然 4096 个 prompt token 一次跑完会卡 1.5 秒,那就拆成 8 段,每段 512 token,各跑 ~190 ms。但 prefill 计算本质是 attention——后面的 token 必须能看到前面所有 token 的 K/V。所以"切片"必须保证因果性:第 k 片在 forward 时,K/V 来自前面所有片 + 当前片自己。</p>
+
+    <p>实现层面,这正是 KV Cache 的天然能力——prefill 第 1 片写入前 512 个 K/V,第 2 片写入 512–1024,attention 时 query 长度 = 512,key/value 长度 = 已写入总长。计算量相对单体 prefill 几乎不增加(softmax 还是那个 softmax),代价是 kernel launch 多了 N 倍,以及每片的 attention K/V 长度递增。</p>
+
+    <div class="figure">
+      <canvas id="cv2" width="720" height="170"></canvas>
+      <div class="caption"><b>Fig. 2</b>把同一个 4096-token prefill 切成 1 / 2 / 4 / 8 片。总耗时只略增(kernel overhead),但每片的"档期"短了——这就是后面让它和 decode 共舞的前提。</div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl-row">
+        <span class="ctl-label">切片数 N</span>
+        <input type="range" id="sl2" min="0" max="3" step="1" value="0">
+        <span class="ctl-val" id="v2">N = 1</span>
+      </div>
+    </div>
+
+    <div class="insight"><b>关键观察:</b>切片本身不省时间,甚至略亏(kernel overhead)。它真正的价值,在于把"一根长棒"变成"一串小石头"——下一节才能把石头塞进 decode 的缝里。</div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="s3">
+    <header class="section-head">
+      <div class="section-num">III.</div>
+      <h2 class="section-title">同批混跑:prefill ⊕ decode</h2>
+    </header>
+
+    <p>Continuous batching(我们 4 月 28 日那期讲过)的核心是 step 粒度的请求增减。Chunked prefill 在它之上再加一条规则:<em>每个 step 的 token budget 是固定的</em>(比如 <span class="mono">2048</span>),先尽量塞满 decode 用户(每人 1 token),剩下的 budget 用来跑 prefill 的一个 chunk。</p>
+
+    <p>这样一个 batch step 的输入张量会同时包含两类 token:M 个 decode token(query 长度 = 1)+ K 个 prefill token(query 长度 = K),总长度 ≤ token budget。Attention kernel 通过 <span class="mono">cu_seqlens</span> + <span class="mono">causal mask</span> 区分两者,FlashAttention v2 起对这种 variable-length packed batch 是原生支持的。</p>
+
+    <div class="tabs">
+      <button class="tab active" data-mode="mono">单体 prefill</button>
+      <button class="tab" data-mode="chunk">Chunked prefill</button>
+    </div>
+
+    <div class="figure" style="margin-top:0;">
+      <canvas id="cv3" width="720" height="240"></canvas>
+      <div class="caption"><b>Fig. 3</b>同一段 14 个 batch step。<span style="color:#1f3a5f;">蓝</span>= decode token(R1–R4),<span style="color:#a8322d;">红</span>= prefill chunk(R5,长 prompt)。切换标签看两种调度下,R1–R4 在那段时间里到底吐没吐 token。</div>
+    </div>
+
+    <div class="insight"><b>本质:</b>Chunked prefill 不是优化 prefill,而是把 prefill 从"独占模式"降级为"共享模式"。R5 的 TTFT 微微变长(多了几次 kernel launch),换 R1–R4 的 TPOT 不掉队。</div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="s4">
+    <header class="section-head">
+      <div class="section-num">IV.</div>
+      <h2 class="section-title">Chunk size 这个旋钮</h2>
+    </header>
+
+    <p>调小 chunk(比如 256):decode 几乎完全不掉拍,TPOT P99 漂亮,但 prefill TTFT 会被拉长——因为每个 chunk 只能用 batch budget 的一小部分,prefill 进度慢。</p>
+
+    <p>调大 chunk(比如 4096):退化回单体 prefill,TTFT 短了,但 R1–R4 的 TPOT spike 又回来了,P99 难看。</p>
+
+    <p>所以这是一道延迟分布的"裁切题"。下面用 <b>Llama-3-70B</b> 在单卡 A2 量级算力的近似数字算给你看——拖动滑块感受这个 trade-off。</p>
+
+    <div class="envelope">
+      <div class="envelope-title">Back-of-envelope · Llama-3-70B Decode 假设</div>
+      <div class="envelope-grid">
+        <div class="env-item"><span>层数 / KV heads / head_dim</span><span>80 / 8 / 128</span></div>
+        <div class="env-item"><span>Decode 吞吐(单请求)</span><span>~50 tok/s</span></div>
+        <div class="env-item"><span>Prefill 吞吐(独占)</span><span>~3000 tok/s</span></div>
+        <div class="env-item"><span>新请求 prompt 长度</span><span>4096 token</span></div>
+        <div class="env-item"><span>在线 decode 用户数</span><span>4</span></div>
+        <div class="env-item"><span>Step token budget</span><span>2048</span></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl-row">
+        <span class="ctl-label">Chunk size</span>
+        <input type="range" id="sl4" min="0" max="6" step="1" value="3">
+        <span class="ctl-val" id="v4">512 tok</span>
+      </div>
+    </div>
+
+    <div class="figure">
+      <canvas id="cv4" width="720" height="280"></canvas>
+      <div class="caption"><b>Fig. 4</b>横轴 chunk size,纵轴左/右分别是 TTFT 与 P99 TPOT。蓝线 = TTFT(秒),红线 = decode 用户的 P99 TPOT(毫秒)。两条曲线方向相反,生产上要按 SLO 选交点附近的工作点。</div>
+    </div>
+
+    <div class="insight"><b>Chunk size 是每步 prefill 的 token 预算,通常在数百到数千 token 之间权衡</b>。具体默认值随框架与版本而变(如 vLLM 通过 <span class="mono">max_num_batched_tokens</span> 控制,不同版本默认值不同),应以你部署的版本实测为准。如果你的请求是几十路并发短 prompt,chunk 还可以更小;如果是低并发长上下文 RAG,chunk 要适度放大。</div>
+  </section>
+
+  <!-- ============ SECTION 5 ============ -->
+  <section class="section" id="s5">
+    <header class="section-head">
+      <div class="section-num">V.</div>
+      <h2 class="section-title">当它失效:与 PD 分离的边界</h2>
+    </header>
+
+    <p>Chunked prefill 的隐含假设是:prefill 和 decode <em>共用同一组权重和同一台设备</em>。当 prompt 极长(>32K)且并发又高时,即便是细切的 prefill chunk,也会反复挤占 decode 的 attention bandwidth(KV cache 越长,decode 单步本身就越慢)——chunk 切到再细,也救不了 decode 已经 memory-bound 到极致的情况。</p>
+
+    <p>这正是 2024–2025 年 <b>DistServe / Mooncake / SGLang</b> 等系统转向 <b>Disaggregated Prefill–Decode (PD 分离)</b> 的动机:把 prefill 和 decode 放到两组不同硬件上,中间用 KV transfer 链路把 cache 搬过去。Chunked prefill 是单机内部的"刀工",PD 分离是把厨房一分为二——前者解决调度,后者解决资源隔离。</p>
+
+    <p>对我们来说,最现实的次序是:<b>先把 chunked prefill 调到位(vLLM/MindIE 都已默认开启)</b>,把 P99 TPOT 拉回 SLO;再观察长上下文 workload 的占比是否到了需要 PD 分离的临界——这通常出现在 32K+ 上下文 + 多模态前缀缓存场景。</p>
+
+    <div class="insight"><b>承前启后:</b>Chunked prefill 用<em>时间维度</em>把 prefill 的尖峰摊平;PD 分离用<em>空间维度</em>把它彻底搬走。我们下一期会拆 PD 分离的 KV transfer 链路。</div>
+  </section>
+
+  <!-- ============ TAKEAWAYS ============ -->
+  <section class="takeaways" id="takeaways">
+    <header class="section-head">
+      <div class="section-num">¶</div>
+      <h2 class="section-title">What to remember</h2>
+    </header>
+    <p><strong>问题</strong>单体 prefill 在 batch step 内"独占且不可抢占"——这是 TPOT 长尾的最大单一来源,而不是 prefill 本身慢。</p>
+    <p><strong>方法</strong>把一次 prefill 切成 N 片,每片当作一段普通 forward,新增的只是 kernel launch overhead 与递增的 attention K 长度;因果性由 KV cache 自然保证。</p>
+    <p><strong>调度</strong>每个 step 的 token budget 先满足在线 decode(每人 1 token),剩下的塞 prefill chunk;FlashAttention v2 的 packed/varlen 接口让两类 token 可以同 kernel 跑完。</p>
+    <p><strong>调参</strong>Chunk size 是 TTFT 与 TPOT 之间的旋钮:小 chunk 保 TPOT,大 chunk 保 TTFT。常见工作点在数百到数千 token 量级,具体默认值随框架版本而变,需按 SLO 实测选取。</p>
+    <p><strong>边界</strong>当上下文极长 + 高并发把 decode 自身打成 memory-bound 时,chunked prefill 失效;这是 PD 分离登场的信号。</p>
+  </section>
+
+  <div class="colophon">
+    <span>AI Infra · Daily · 第 8 期</span>
+    <span>Composed in Newsreader · Set in Instrument Sans · Numbers in JetBrains Mono</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============ utility ============
+const dpr = Math.max(1, window.devicePixelRatio || 1);
+function setupCanvas(c){
+  const w = c.clientWidth || c.width;
+  const h = c.height;
+  c.width = w * dpr;
+  c.style.height = h + 'px';
+  c.height = h * dpr;
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return {ctx, w, h};
+}
+
+const PAL = {
+  bg:'#f3efe5', ink:'#1a1918', soft:'#4a4641', mute:'#7a746c',
+  rule:'rgba(26,25,24,0.18)', ruleStrong:'rgba(26,25,24,0.32)',
+  accent:'#a8322d', accentSoft:'#c5534f',
+  blue:'#1f3a5f', blueSoft:'#6b89a8',
+  sage:'#6e8062', ochre:'#b8823a',
+};
+
+// ============ FIG 1 — single-batch timeline with prefill spike ============
+(function(){
+  const c = document.getElementById('cv1');
+  const {ctx, w, h} = setupCanvas(c);
+  const padL = 50, padT = 18, padR = 12, padB = 28;
+  const rows = 5; // R1..R5
+  const steps = 16;
+  const cellW = (w - padL - padR) / steps;
+  const cellH = (h - padT - padB) / rows;
+
+  let frame = 0;
+  let playing = false;
+  let raf = null;
+
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+
+    // labels
+    ctx.font = "11px 'Instrument Sans',sans-serif";
+    ctx.fillStyle = PAL.soft;
+    ctx.textBaseline = 'middle';
+    for(let r=0;r<rows;r++){
+      ctx.textAlign = 'right';
+      ctx.fillText('R'+(r+1), padL-8, padT + cellH*(r+0.5));
+    }
+    // step axis
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PAL.mute;
+    ctx.font = "10px 'JetBrains Mono',monospace";
+    for(let s=0;s<=steps;s+=4){
+      const x = padL + s*cellW;
+      ctx.fillText(s, x, h-padB+14);
+    }
+    ctx.fillStyle = PAL.mute;
+    ctx.font = "10px 'Instrument Sans',sans-serif";
+    ctx.textAlign='left';
+    ctx.fillText('batch step →', padL, h-6);
+
+    // grid
+    ctx.strokeStyle = PAL.rule;
+    ctx.lineWidth = 1;
+    for(let r=0;r<=rows;r++){
+      ctx.beginPath();
+      ctx.moveTo(padL, padT + r*cellH);
+      ctx.lineTo(w-padR, padT + r*cellH);
+      ctx.stroke();
+    }
+
+    // R1..R4: decode every step, up to current frame
+    for(let r=0;r<4;r++){
+      for(let s=0;s<steps;s++){
+        const reached = s < frame;
+        // R1..R4 are stalled while prefill runs (steps 8..15 in static; in animated we say stalled when frame in spike)
+        const inSpike = (s >= 8 && s <= 15);
+        let color;
+        if(!reached) color = null;
+        else if(inSpike) color = '#d8d2c3'; // stalled / pale
+        else color = PAL.blueSoft;
+        if(color){
+          ctx.fillStyle = color;
+          ctx.fillRect(padL+s*cellW+1, padT+r*cellH+3, cellW-2, cellH-6);
+        }
+      }
+    }
+
+    // R5: prefill from step 8 to 15 (8 steps wide)
+    if(frame > 8){
+      const startS = 8;
+      const endS = Math.min(frame, 16);
+      const x0 = padL + startS*cellW + 1;
+      const x1 = padL + endS*cellW - 1;
+      ctx.fillStyle = PAL.accent;
+      ctx.fillRect(x0, padT + 4*cellH + 3, x1-x0, cellH-6);
+      // hatching
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0, padT + 4*cellH + 3, x1-x0, cellH-6);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(250,248,243,0.35)';
+      ctx.lineWidth = 1;
+      for(let xh=x0; xh<x1+cellH; xh+=8){
+        ctx.beginPath();
+        ctx.moveTo(xh, padT + 4*cellH);
+        ctx.lineTo(xh - cellH, padT + 5*cellH);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // label
+      if(endS - startS > 1){
+        ctx.fillStyle = '#faf8f3';
+        ctx.font = "10px 'Instrument Sans',sans-serif";
+        ctx.textAlign='center';
+        ctx.fillText('R5 prefill (4096 tok, 单体)', (x0+x1)/2, padT + 4*cellH + cellH/2 + 1);
+      }
+    }
+
+    // annotation when spike active
+    if(frame > 8){
+      ctx.fillStyle = PAL.accent;
+      ctx.font = "italic 11px 'Newsreader',serif";
+      ctx.textAlign='left';
+      ctx.fillText('← R1–R4 在这段窗口内停止吐 token', padL+8*cellW+6, padT+2*cellH-4);
+    }
+  }
+
+  function step(){
+    if(!playing) return;
+    frame += 0.4;
+    if(frame >= 17){
+      frame = 17;
+      playing = false;
+      document.getElementById('play1').classList.remove('pause');
+      document.getElementById('play1').textContent = 'Replay';
+    }
+    draw();
+    if(playing) raf = requestAnimationFrame(step);
+  }
+
+  document.getElementById('play1').addEventListener('click',()=>{
+    if(frame >= 17) frame = 0;
+    playing = !playing;
+    const btn = document.getElementById('play1');
+    if(playing){
+      btn.classList.add('pause');
+      btn.textContent = 'Pause';
+      step();
+    } else {
+      btn.classList.remove('pause');
+      btn.textContent = 'Play';
+    }
+  });
+
+  draw();
+})();
+
+// ============ FIG 2 — splitting prefill into N chunks ============
+(function(){
+  const c = document.getElementById('cv2');
+  const {ctx, w, h} = setupCanvas(c);
+  const padL = 60, padT = 30, padR = 20, padB = 36;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+
+  const NS = [1,2,4,8];
+  let nIdx = 0;
+  const totalTok = 4096;
+
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+
+    // baseline rule
+    ctx.strokeStyle = PAL.ruleStrong;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT + innerH);
+    ctx.lineTo(w-padR, padT + innerH);
+    ctx.stroke();
+
+    // total bar background
+    const barY = padT + 30;
+    const barH = 36;
+    ctx.fillStyle = '#e8e1d0';
+    ctx.fillRect(padL, barY, innerW, barH);
+
+    const N = NS[nIdx];
+    // overhead model: each chunk adds 3% of single-chunk time as overhead
+    const overheadPerChunk = 0.03;
+    const baseTotal = 1.0;
+    const totalScaled = baseTotal + overheadPerChunk * (N-1);
+    // total drawn width relative to N=8 max
+    const maxTotal = baseTotal + overheadPerChunk * 7;
+    const drawnW = innerW * (totalScaled / maxTotal);
+
+    // chunks
+    for(let i=0;i<N;i++){
+      const cw = drawnW / N;
+      const x = padL + i*cw;
+      ctx.fillStyle = i%2===0 ? PAL.accent : PAL.accentSoft;
+      ctx.fillRect(x+1, barY+1, cw-2, barH-2);
+      // chunk label
+      if(cw > 36){
+        ctx.fillStyle = '#faf8f3';
+        ctx.font = "10px 'JetBrains Mono',monospace";
+        ctx.textAlign='center';
+        ctx.fillText(Math.floor(totalTok/N)+' tok', x+cw/2, barY+barH/2+3);
+      }
+    }
+    // dashed remainder to show "would have been longer"
+    if(drawnW < innerW){
+      ctx.save();
+      ctx.setLineDash([3,3]);
+      ctx.strokeStyle = PAL.rule;
+      ctx.beginPath();
+      ctx.moveTo(padL+drawnW, barY+barH/2);
+      ctx.lineTo(padL+innerW, barY+barH/2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // top label
+    ctx.fillStyle = PAL.ink;
+    ctx.font = "13px 'Instrument Sans',sans-serif";
+    ctx.textAlign='left';
+    ctx.fillText('总耗时(相对):', padL, padT + 14);
+    ctx.fillStyle = PAL.accent;
+    ctx.font = "13px 'JetBrains Mono',monospace";
+    ctx.fillText('×' + totalScaled.toFixed(2), padL+115, padT+14);
+
+    ctx.fillStyle = PAL.mute;
+    ctx.font = "11px 'Instrument Sans',sans-serif";
+    ctx.textAlign='right';
+    ctx.fillText(N+' chunk' + (N>1?'s':'') + ' · 每片 ' + Math.floor(totalTok/N) + ' tok · kernel overhead +' + ((N-1)*3) + '%', w-padR, padT+14);
+
+    // bottom annotations: chunk duration
+    ctx.fillStyle = PAL.soft;
+    ctx.font = "11px 'Instrument Sans',sans-serif";
+    ctx.textAlign='left';
+    ctx.fillText('每片"档期"长度 →', padL, barY+barH+22);
+    ctx.fillStyle = PAL.accent;
+    ctx.font = "12px 'JetBrains Mono',monospace";
+    ctx.fillText((1500/N).toFixed(0) + ' ms', padL+150, barY+barH+22);
+  }
+
+  document.getElementById('sl2').addEventListener('input',(e)=>{
+    nIdx = parseInt(e.target.value);
+    document.getElementById('v2').textContent = 'N = ' + NS[nIdx];
+    draw();
+  });
+
+  draw();
+})();
+
+// ============ FIG 3 — packed batch: mono vs chunked ============
+(function(){
+  const c = document.getElementById('cv3');
+  const {ctx, w, h} = setupCanvas(c);
+  const padL = 50, padT = 30, padR = 14, padB = 30;
+  const rows = 5; // R1..R5
+  const steps = 14;
+  const cellW = (w - padL - padR) / steps;
+  const cellH = (h - padT - padB) / rows;
+
+  let mode = 'mono';
+
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+
+    // Title row
+    ctx.fillStyle = PAL.soft;
+    ctx.font = "11px 'Instrument Sans',sans-serif";
+    ctx.textAlign='left';
+    ctx.fillText(mode==='mono' ? '调度:R5 独占 8 个 step,R1–R4 全冻结' : '调度:每 step token budget = 2048,先填 decode 再塞 prefill chunk', padL, padT-12);
+
+    // row labels
+    ctx.font = "11px 'Instrument Sans',sans-serif";
+    ctx.fillStyle = PAL.soft;
+    ctx.textBaseline = 'middle';
+    for(let r=0;r<rows;r++){
+      ctx.textAlign = 'right';
+      ctx.fillText('R'+(r+1), padL-8, padT + cellH*(r+0.5));
+    }
+
+    // grid
+    ctx.strokeStyle = PAL.rule;
+    ctx.lineWidth = 1;
+    for(let r=0;r<=rows;r++){
+      ctx.beginPath();
+      ctx.moveTo(padL, padT + r*cellH);
+      ctx.lineTo(w-padR, padT + r*cellH);
+      ctx.stroke();
+    }
+
+    if(mode === 'mono'){
+      // R1..R4 decode steps 0..3, frozen 4..11, resume 12..13
+      for(let r=0;r<4;r++){
+        for(let s=0;s<steps;s++){
+          const frozen = (s>=4 && s<=11);
+          ctx.fillStyle = frozen ? '#dfd9c8' : PAL.blueSoft;
+          ctx.fillRect(padL+s*cellW+1.5, padT+r*cellH+3, cellW-3, cellH-6);
+        }
+      }
+      // R5 mono prefill
+      ctx.fillStyle = PAL.accent;
+      ctx.fillRect(padL+4*cellW+1.5, padT+4*cellH+3, 8*cellW-3, cellH-6);
+      ctx.fillStyle = '#faf8f3';
+      ctx.font = "10px 'Instrument Sans',sans-serif";
+      ctx.textAlign='center';
+      ctx.fillText('R5 prefill 4096 tok · 单体一次 forward', padL+4*cellW + 4*cellW, padT+4*cellH+cellH/2+3);
+      // annotation
+      ctx.fillStyle = PAL.accent;
+      ctx.font = "italic 11px 'Newsreader',serif";
+      ctx.textAlign='left';
+      ctx.fillText('— R1–R4 在 step 4–11 完全停滞 —', padL+4*cellW, padT-2);
+    } else {
+      // chunked: every step, R1..R4 get 1 token (decode), R5 gets a chunk in steps 4..11
+      for(let r=0;r<4;r++){
+        for(let s=0;s<steps;s++){
+          ctx.fillStyle = PAL.blueSoft;
+          ctx.fillRect(padL+s*cellW+1.5, padT+r*cellH+3, cellW-3, cellH-6);
+        }
+      }
+      // R5 chunks
+      for(let s=4;s<=11;s++){
+        ctx.fillStyle = (s%2===0)?PAL.accent:PAL.accentSoft;
+        ctx.fillRect(padL+s*cellW+1.5, padT+4*cellH+3, cellW-3, cellH-6);
+        ctx.fillStyle='#faf8f3';
+        ctx.font = "9px 'JetBrains Mono',monospace";
+        ctx.textAlign='center';
+        ctx.fillText('512', padL+s*cellW+cellW/2, padT+4*cellH+cellH/2+3);
+      }
+      ctx.fillStyle = PAL.accent;
+      ctx.font = "italic 11px 'Newsreader',serif";
+      ctx.textAlign='left';
+      ctx.fillText('— R5 prefill 切 8 片,与 R1–R4 同 step 共跑;TTFT 略涨,TPOT 不掉 —', padL+4*cellW, padT-2);
+    }
+
+    // step axis
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PAL.mute;
+    ctx.font = "10px 'JetBrains Mono',monospace";
+    for(let s=0;s<=steps;s+=2){
+      const x = padL + s*cellW;
+      ctx.fillText(s, x, h-padB+14);
+    }
+  }
+
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      mode = t.dataset.mode;
+      draw();
+    });
+  });
+
+  draw();
+})();
+
+// ============ FIG 4 — chunk-size sweeper: TTFT vs P99 TPOT ============
+(function(){
+  const c = document.getElementById('cv4');
+  const {ctx, w, h} = setupCanvas(c);
+  const padL = 56, padR = 56, padT = 30, padB = 50;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+
+  // chunk sizes
+  const CS = [128, 256, 512, 1024, 2048, 3072, 4096];
+  // realistic-ish: total prefill tokens=4096, decode users=4, decode-per-step assumed
+  // model: prefill chunk consumes (chunk/2048)*step_time of chunk-step; decode token /step ≈ 25ms when no prefill
+  // approximate:
+  // base_step = 25 ms (4 decode tokens)
+  // chunk-step time = 25 ms + chunk * (1500/4096) ms  (linear, prefill 4096 tok = 1500ms单体)
+  // num_chunks = ceil(4096/chunk)
+  // TTFT = num_chunks * chunk-step time
+  // P99 TPOT (decode users) = chunk-step time (max stall they see between tokens) + small buffer
+  function computePoints(){
+    return CS.map(cs=>{
+      const num = Math.ceil(4096/cs);
+      const chunkStepMs = 25 + cs * (1500/4096);
+      const ttftMs = num * chunkStepMs;
+      const tpotP99Ms = chunkStepMs * 0.95 + 10; // a little smoothing
+      return {cs, ttftMs, tpotP99Ms, chunkStepMs, num};
+    });
+  }
+  const pts = computePoints();
+
+  // domains
+  const ttftMax = Math.max(...pts.map(p=>p.ttftMs)) * 1.05; // ms, left axis
+  const tpotMax = Math.max(...pts.map(p=>p.tpotP99Ms)) * 1.1; // right axis
+
+  const xPos = (cs)=>{
+    const i = CS.indexOf(cs);
+    return padL + (i/(CS.length-1))*innerW;
+  };
+  const yL = (v)=> padT + innerH - (v/ttftMax)*innerH;
+  const yR = (v)=> padT + innerH - (v/tpotMax)*innerH;
+
+  let selIdx = 2; // 512 default
+
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+
+    // grid horizontals
+    ctx.strokeStyle = PAL.rule;
+    ctx.lineWidth = 1;
+    for(let i=0;i<=4;i++){
+      const y = padT + (i/4)*innerH;
+      ctx.beginPath();
+      ctx.moveTo(padL,y);
+      ctx.lineTo(w-padR,y);
+      ctx.stroke();
+    }
+
+    // x ticks
+    ctx.fillStyle = PAL.mute;
+    ctx.font = "10px 'JetBrains Mono',monospace";
+    ctx.textAlign='center';
+    CS.forEach((cs,i)=>{
+      ctx.fillText(cs, xPos(cs), h-padB+16);
+    });
+    ctx.fillStyle = PAL.soft;
+    ctx.font = "10.5px 'Instrument Sans',sans-serif";
+    ctx.fillText('Chunk size (tokens)', padL+innerW/2, h-12);
+
+    // Left axis (TTFT)
+    ctx.fillStyle = PAL.blue;
+    ctx.font = "10px 'JetBrains Mono',monospace";
+    ctx.textAlign='right';
+    for(let i=0;i<=4;i++){
+      const v = (ttftMax/1000) * (4-i)/4;
+      ctx.fillText(v.toFixed(1)+'s', padL-8, padT + (i/4)*innerH + 3);
+    }
+    ctx.save();
+    ctx.translate(14, padT+innerH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign='center';
+    ctx.fillStyle = PAL.blue;
+    ctx.font = "10.5px 'Instrument Sans',sans-serif";
+    ctx.fillText('TTFT (新请求首 token 延迟)', 0, 0);
+    ctx.restore();
+
+    // Right axis (TPOT)
+    ctx.fillStyle = PAL.accent;
+    ctx.textAlign='left';
+    ctx.font = "10px 'JetBrains Mono',monospace";
+    for(let i=0;i<=4;i++){
+      const v = (tpotMax) * (4-i)/4;
+      ctx.fillText(v.toFixed(0)+'ms', w-padR+8, padT + (i/4)*innerH + 3);
+    }
+    ctx.save();
+    ctx.translate(w-14, padT+innerH/2);
+    ctx.rotate(Math.PI/2);
+    ctx.textAlign='center';
+    ctx.fillStyle = PAL.accent;
+    ctx.font = "10.5px 'Instrument Sans',sans-serif";
+    ctx.fillText('P99 TPOT (在线 decode 用户)', 0, 0);
+    ctx.restore();
+
+    // TTFT line (blue)
+    ctx.strokeStyle = PAL.blue;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    pts.forEach((p,i)=>{
+      const x = xPos(p.cs), y = yL(p.ttftMs);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    pts.forEach(p=>{
+      const x = xPos(p.cs), y = yL(p.ttftMs);
+      ctx.fillStyle = PAL.bg;
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = PAL.blue;
+      ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.stroke();
+    });
+
+    // TPOT line (accent)
+    ctx.strokeStyle = PAL.accent;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    pts.forEach((p,i)=>{
+      const x = xPos(p.cs), y = yR(p.tpotP99Ms);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    pts.forEach(p=>{
+      const x = xPos(p.cs), y = yR(p.tpotP99Ms);
+      ctx.fillStyle = PAL.bg;
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = PAL.accent;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.stroke();
+    });
+
+    // sweet spot band 256-1024
+    const x1 = xPos(256), x2 = xPos(1024);
+    ctx.fillStyle = 'rgba(184,130,58,0.10)';
+    ctx.fillRect(x1, padT, x2-x1, innerH);
+    ctx.fillStyle = PAL.ochre;
+    ctx.font = "italic 11px 'Newsreader',serif";
+    ctx.textAlign='center';
+    ctx.fillText('生产甜点区', (x1+x2)/2, padT+12);
+
+    // selected marker
+    const sel = pts[selIdx];
+    const sx = xPos(sel.cs);
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(sx, padT); ctx.lineTo(sx, padT+innerH); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // readout box
+    const rbX = sx + 8, rbY = padT + 6;
+    const rbW = 158, rbH = 64;
+    let boxX = rbX;
+    if(boxX + rbW > w-padR) boxX = sx - rbW - 8;
+    ctx.fillStyle = '#faf8f3';
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineWidth = 1;
+    ctx.fillRect(boxX, rbY, rbW, rbH);
+    ctx.strokeRect(boxX, rbY, rbW, rbH);
+    ctx.fillStyle = PAL.ink;
+    ctx.font = "10px 'Instrument Sans',sans-serif";
+    ctx.textAlign='left';
+    ctx.fillText('CHUNK = '+sel.cs+' tok · '+sel.num+' 片', boxX+8, rbY+14);
+    ctx.fillStyle = PAL.blue;
+    ctx.font = "11.5px 'JetBrains Mono',monospace";
+    ctx.fillText('TTFT  = '+(sel.ttftMs/1000).toFixed(2)+' s', boxX+8, rbY+32);
+    ctx.fillStyle = PAL.accent;
+    ctx.fillText('TPOT99 = '+sel.tpotP99Ms.toFixed(0)+' ms', boxX+8, rbY+50);
+  }
+
+  document.getElementById('sl4').addEventListener('input',(e)=>{
+    selIdx = parseInt(e.target.value);
+    document.getElementById('v4').textContent = CS[selIdx] + ' tok';
+    draw();
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>

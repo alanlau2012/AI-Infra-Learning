@@ -107,7 +107,20 @@ function getTopic(seedData: SeedData, topicStatus: Record<string, StudyStatus>, 
       return toTopicSummary(prerequisite, topicStatus);
     }),
     bodyMd: getTopicBody(topic),
+    interactiveDemo: cloneInteractiveDemo(topic.interactive_demo),
     sources: cloneSources(topic.sources)
+  };
+}
+
+function cloneInteractiveDemo(demo: SeedTopic['interactive_demo']): TopicDetail['interactiveDemo'] {
+  if (!demo) {
+    return null;
+  }
+
+  return {
+    ...demo,
+    metrics: [...demo.metrics],
+    steps: demo.steps.map((step) => ({ ...step }))
   };
 }
 

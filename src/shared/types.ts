@@ -46,6 +46,7 @@ export interface SeedTopic {
   key_points: string[];
   real_world_connection: string;
   body_md?: string;
+  interactive_demo?: TopicInteractiveDemo;
   /** 该 Topic 引用的权威来源清单。仅展示，不影响业务逻辑。 */
   sources?: TopicSource[];
 }
@@ -87,8 +88,32 @@ export interface TopicDetail extends TopicSummary {
   keyPoints: string[];
   prerequisites: TopicSummary[];
   bodyMd: string | null;
+  interactiveDemo: TopicInteractiveDemo | null;
   /** 该 Topic 引用的权威来源清单（透传自 seed），无来源时为空数组。 */
   sources: TopicSource[];
+}
+
+export type TopicInteractiveDemoKind =
+  | 'stack_compare'
+  | 'kv_paged_attention'
+  | 'batching_prefill'
+  | 'ascend_operator'
+  | 'distributed_inference';
+
+export type TopicInteractiveMetric = 'TTFT' | 'TPOT' | 'throughput' | 'kvMemory' | 'bandwidth';
+
+export interface TopicInteractiveDemoStep {
+  id: string;
+  label: string;
+  explanation: string;
+}
+
+export interface TopicInteractiveDemo {
+  kind: TopicInteractiveDemoKind;
+  title: string;
+  summary: string;
+  metrics: TopicInteractiveMetric[];
+  steps: TopicInteractiveDemoStep[];
 }
 
 export interface RoadmapEdge {

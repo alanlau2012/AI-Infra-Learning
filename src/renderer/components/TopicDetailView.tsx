@@ -13,6 +13,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { useMemo } from 'react';
 import type { SourceConfidence, StageWithTopics, StudyStatus, TopicDetail } from '../../shared/types';
 import { extractMarkdownHeadings } from '../lib/markdown';
+import InteractiveLesson from './InteractiveLesson';
 import MarkdownContent from './MarkdownContent';
 
 const statusLabels: Record<StudyStatus, string> = {
@@ -108,6 +109,8 @@ export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelect
             <p>{topic.realWorldConnection ?? '该专题正在补充实战关联。'}</p>
           </div>
         </section>
+
+        {topic.interactiveDemo ? <InteractiveLesson demo={topic.interactiveDemo} /> : null}
 
         <section className="detail-section detail-body-section" aria-label="详细内容">
           {topic.bodyMd ? (

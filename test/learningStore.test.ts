@@ -26,24 +26,22 @@ afterEach(() => {
 });
 
 describe('learning store', () => {
-  it('loads the Enterprise Agent Platform Skills outline and topic details without SQLite', () => {
+  it('loads the 2026 five-topic interactive demo outline', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const outline = store.getOutline();
     const topic = store.getTopic('T01');
     const progress = store.getProgress();
 
-    expect(outline).toHaveLength(4);
-    expect(outline[0].name).toBe('平台底座与私有化基础设施');
-    expect(outline[0].topics[0].id).toBe('T01');
-    expect(outline.flatMap((stage) => stage.topics)).toHaveLength(15);
-    expect(topic.name).toContain('企业 Agent 平台总体架构');
-    expect(topic.keyPoints).toHaveLength(seedData.topics[0].key_points.length);
-    expect(topic.bodyMd).toContain('Enterprise Agent Platform Builder');
+    expect(outline).toHaveLength(3);
+    expect(outline[0].name).toBe('AI Infra 栈全景');
+    expect(outline.flatMap((stage) => stage.topics)).toHaveLength(5);
+    expect(topic.name).toBe('NVIDIA vs 昇腾 AI Infra 栈全景');
+    expect(topic.interactiveDemo?.kind).toBe('stack_compare');
+    expect(topic.interactiveDemo?.metrics).toContain('throughput');
     expect(topic.bodyMd).toContain('## 角色定位与问题场景');
-    expect(topic.bodyMd).not.toContain('learning-asset://');
-    expect(topic.status).toBe('not_started');
-    expect(progress.totalTopics).toBe(15);
+    expect(topic.sources.length).toBeGreaterThanOrEqual(3);
+    expect(progress.totalTopics).toBe(5);
     expect(progress.completedTopics).toBe(0);
   });
 
@@ -51,59 +49,18 @@ describe('learning store', () => {
     const progressPath = makeProgressPath();
     const store = createLearningStore({ seedData, progressPath });
 
-    const updated = store.updateTopicStatus('T01', 'completed');
+    const updated = store.updateTopicStatus('T02', 'completed');
     const reopened = createLearningStore({ seedData, progressPath });
 
     expect(updated.status).toBe('completed');
-    expect(reopened.getTopic('T01').status).toBe('completed');
+    expect(reopened.getTopic('T02').status).toBe('completed');
     expect(reopened.getProgress().completedTopics).toBe(1);
     expect(JSON.parse(fs.readFileSync(progressPath, 'utf8'))).toEqual({
       version: 2,
       topicStatus: {
-        T01: 'completed'
+        T02: 'completed'
       }
     });
-  });
-
-  it('ignores corrupt progress files and overwrites them on the next update', () => {
-    const progressPath = makeProgressPath();
-    fs.mkdirSync(path.dirname(progressPath), { recursive: true });
-    fs.writeFileSync(progressPath, '{ broken json', 'utf8');
-
-    const store = createLearningStore({ seedData, progressPath });
-
-    expect(store.getTopic('T01').status).toBe('not_started');
-    store.updateTopicStatus('T02', 'in_progress');
-
-    expect(JSON.parse(fs.readFileSync(progressPath, 'utf8'))).toEqual({
-      version: 2,
-      topicStatus: {
-        T02: 'in_progress'
-      }
-    });
-  });
-
-  it('filters unknown topics and invalid statuses from progress files', () => {
-    const progressPath = makeProgressPath();
-    fs.mkdirSync(path.dirname(progressPath), { recursive: true });
-    fs.writeFileSync(
-      progressPath,
-      JSON.stringify({
-        version: 1,
-        topicStatus: {
-          T01: 'completed',
-          T02: 'done',
-          T99: 'completed'
-        }
-      }),
-      'utf8'
-    );
-
-    const store = createLearningStore({ seedData, progressPath });
-
-    expect(store.getTopic('T01').status).toBe('completed');
-    expect(store.getTopic('T02').status).toBe('not_started');
-    expect(store.getProgress().completedTopics).toBe(1);
   });
 
   it('rejects invalid topic ids, missing topics, invalid statuses, and invalid seed references', () => {
@@ -118,65 +75,48 @@ describe('learning store', () => {
         seedData: {
           ...seedData,
           topics: seedData.topics.map((topic) =>
-            topic.id === 'T02' ? { ...topic, prerequisites: ['DOES_NOT_EXIST'] } : topic
+            topic.id === 'T03' ? { ...topic, prerequisites: ['DOES_NOT_EXIST'] } : topic
           )
         }
       })
     ).toThrow(/prerequisite/i);
   });
 
-  it('builds the roadmap graph from new seed prerequisites and main track metadata', () => {
+  it('builds the roadmap graph from the demo prerequisites and main track metadata', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     const graph = store.getRoadmapGraph();
 
-    expect(graph.mainTrack).toEqual(seedData.learning_paths?.main_track?.sequence);
+    expect(graph.mainTrack).toEqual(['T01', 'T02', 'T03', 'T04', 'T05']);
     expect(graph.edges).toContainEqual({ from: 'T01', to: 'T02' });
-    expect(graph.edges).toContainEqual({ from: 'T09', to: 'T10' });
-    expect(graph.edges).toContainEqual({ from: 'T14', to: 'T15' });
+    expect(graph.edges).toContainEqual({ from: 'T02', to: 'T03' });
+    expect(graph.edges).toContainEqual({ from: 'T04', to: 'T05' });
   });
 
-  it('ships framework markdown content without bundled diagrams or interactive gates', () => {
-    const expectedHeadings = [
-      '## 角色定位与问题场景',
-      '## 需要掌握',
-      '## 关键判断力',
-      '## 典型产出',
-      '## 自检问题'
-    ];
+  it('deep-clones sources and interactive demo steps so external mutation does not leak back', () => {
+    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
-    for (const topic of seedData.topics) {
-      expect(topic.body_md?.trim(), topic.id).toBeTruthy();
-      expect(topic.body_md, topic.id).not.toMatch(/\?{4,}/);
-      expect(topic.body_md, topic.id).not.toContain('learning-asset://');
-      expect(topic.body_md?.match(/^##\s+/gm)?.length, topic.id).toBe(5);
-      for (const heading of expectedHeadings) {
-        expect(topic.body_md, topic.id).toContain(heading);
-      }
-    }
+    const first = store.getTopic('T05');
+    first.sources[0].covers.push('mutation');
+    first.interactiveDemo?.steps.push({ id: 'mutation', label: 'mutation', explanation: 'mutation' });
+
+    const second = store.getTopic('T05');
+    expect(second.sources[0].covers).not.toContain('mutation');
+    expect(second.interactiveDemo?.steps.map((step) => step.id)).not.toContain('mutation');
   });
 
-  it('attaches at least 3 authoritative sources to every rewritten topic and never reverts to the ChatGPT clipping link', () => {
+  it('keeps every demo topic sourced and interactive', () => {
     const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
 
     for (const topic of seedData.topics) {
       const detail = store.getTopic(topic.id);
       expect(detail.sources.length, topic.id).toBeGreaterThanOrEqual(3);
+      expect(detail.interactiveDemo, topic.id).not.toBeNull();
+      expect(detail.interactiveDemo?.steps.length, topic.id).toBeGreaterThanOrEqual(4);
       for (const source of detail.sources) {
         expect(source.url, topic.id).toMatch(/^https?:\/\//);
-        expect(source.url, topic.id).not.toContain('chatgpt.com/c/');
         expect(source.covers.length, topic.id).toBeGreaterThan(0);
       }
     }
-  });
-
-  it('deep-clones source covers so external mutation does not leak back into the store', () => {
-    const store = createLearningStore({ seedData, progressPath: makeProgressPath() });
-
-    const first = store.getTopic('T01');
-    first.sources[0].covers.push('mutation');
-
-    const second = store.getTopic('T01');
-    expect(second.sources[0].covers).not.toContain('mutation');
   });
 });

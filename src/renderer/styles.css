@@ -682,6 +682,424 @@ a:focus-visible {
   padding: 8px 2px 0;
 }
 
+.interactive-lesson {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+
+.interactive-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 270px);
+  gap: 16px;
+  align-items: start;
+}
+
+.interactive-head span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.interactive-head h4 {
+  margin: 5px 0 8px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.interactive-head p {
+  margin: 0;
+  color: var(--soft);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.interactive-control {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--meta-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.interactive-control input {
+  min-width: 0;
+  accent-color: var(--teal);
+}
+
+.interactive-control strong {
+  color: var(--text);
+}
+
+.interactive-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(260px, 0.72fr);
+  gap: 14px;
+  min-height: 286px;
+}
+
+.demo-visual {
+  min-width: 0;
+  min-height: 286px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(var(--blue-rgb), 0.07), transparent 46%),
+    var(--meta-bg);
+}
+
+.interactive-side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-grid > div {
+  min-height: 86px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.metric-grid span,
+.metric-grid small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.metric-grid strong {
+  display: block;
+  margin: 5px 0;
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+.interactive-explainer {
+  padding: 13px;
+  border: 1px solid rgba(var(--teal-rgb), 0.28);
+  border-radius: var(--radius);
+  background: rgba(var(--teal-rgb), 0.08);
+}
+
+.interactive-explainer strong {
+  color: var(--teal);
+  font-size: 14px;
+}
+
+.interactive-explainer p {
+  margin: 8px 0 0;
+  color: var(--soft);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.interactive-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.interactive-steps button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.interactive-steps button:hover,
+.interactive-steps button.active {
+  border-color: rgba(var(--teal-rgb), 0.42);
+  background: rgba(var(--teal-rgb), 0.12);
+  color: var(--text);
+}
+
+.stack-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.stack-column {
+  display: grid;
+  gap: 8px;
+}
+
+.stack-column strong,
+.stack-column span,
+.stack-bridge,
+.token-lane span,
+.cache-wall span,
+.request-lane span,
+.pipeline-column span,
+.worker-node {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.stack-column strong {
+  padding: 9px;
+  color: var(--text);
+  text-align: center;
+}
+
+.stack-column span {
+  padding: 9px;
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.stack-column span.active {
+  border-color: rgba(var(--green-rgb), 0.44);
+  background: rgba(var(--green-rgb), 0.11);
+  color: var(--green);
+}
+
+.stack-bridge {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 112px;
+  padding: 12px;
+  color: var(--blue);
+  text-align: center;
+}
+
+.stack-bridge span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.kv-visual,
+.batching-visual,
+.ascend-visual,
+.distributed-visual {
+  display: grid;
+  gap: 14px;
+  align-content: center;
+}
+
+.token-lane {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.token-lane span {
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.token-lane span.active {
+  border-color: rgba(var(--blue-rgb), 0.4);
+  background: rgba(var(--blue-rgb), 0.12);
+  color: var(--blue);
+}
+
+.cache-wall {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.cache-wall span {
+  aspect-ratio: 1.25;
+  min-height: 28px;
+  background: var(--surface);
+}
+
+.cache-wall span.used {
+  border-color: rgba(var(--teal-rgb), 0.48);
+  background: rgba(var(--teal-rgb), 0.18);
+}
+
+.cache-wall span.shared {
+  border-color: rgba(var(--amber-rgb), 0.54);
+  background: rgba(var(--amber-rgb), 0.18);
+}
+
+.kv-caption,
+.scheduler-strip,
+.ai-core-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.request-lane {
+  display: grid;
+  grid-template-columns: 56px repeat(6, minmax(0, 1fr));
+  gap: 7px;
+  align-items: center;
+}
+
+.request-lane strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.request-lane span {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.request-lane span.active.prefill {
+  border-color: rgba(var(--amber-rgb), 0.52);
+  background: rgba(var(--amber-rgb), 0.18);
+  color: var(--amber);
+}
+
+.request-lane span.active.decode {
+  border-color: rgba(var(--green-rgb), 0.46);
+  background: rgba(var(--green-rgb), 0.14);
+  color: var(--green);
+}
+
+.scheduler-strip {
+  border-top: 1px solid var(--line);
+  justify-content: space-between;
+  padding-top: 10px;
+}
+
+.pipeline-column {
+  display: grid;
+  grid-template-columns: 80px repeat(auto-fit, minmax(58px, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.pipeline-column strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.pipeline-column span {
+  padding: 8px 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.pipeline-column span.active {
+  border-color: rgba(var(--coral-rgb), 0.38);
+  background: rgba(var(--coral-rgb), 0.12);
+  color: var(--coral);
+}
+
+.ai-core-chip {
+  border: 1px solid rgba(var(--blue-rgb), 0.32);
+  border-radius: var(--radius);
+  background: rgba(var(--blue-rgb), 0.1);
+  color: var(--blue);
+}
+
+.distributed-visual {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.8fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.worker-node {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 132px;
+  padding: 16px;
+  text-align: center;
+}
+
+.worker-node strong {
+  color: var(--text);
+}
+
+.worker-node span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.prefill-node {
+  border-color: rgba(var(--amber-rgb), 0.42);
+}
+
+.decode-node {
+  border-color: rgba(var(--green-rgb), 0.42);
+}
+
+.transfer-lane {
+  display: grid;
+  gap: 9px;
+  color: var(--blue);
+  text-align: center;
+}
+
+.transfer-lane div {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--track-bg);
+}
+
+.transfer-lane div span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--amber), var(--blue), var(--green));
+}
+
+.transfer-lane small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .body-fallback,
 .panel-empty {
   margin: 0;
@@ -1121,6 +1539,17 @@ a:focus-visible {
 
   .topic-insight-grid {
     grid-template-columns: 1fr;
+  }
+
+  .interactive-head,
+  .interactive-stage,
+  .stack-visual,
+  .distributed-visual {
+    grid-template-columns: 1fr;
+  }
+
+  .stack-bridge {
+    min-height: 72px;
   }
 
   .compact-progress {

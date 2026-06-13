@@ -1,5 +1,5 @@
-import { Cpu, DatabaseZap, Network, PlayCircle, Route, SlidersHorizontal } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Cpu, DatabaseZap, Network, Pause, Play, PlayCircle, Route, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TopicInteractiveDemo, TopicInteractiveDemoKind, TopicInteractiveMetric } from '../../shared/types';
 
 interface Props {
@@ -25,6 +25,23 @@ const kindLabels: Record<TopicInteractiveDemoKind, string> = {
 export default function InteractiveLesson({ demo }: Props) {
   const [activeStep, setActiveStep] = useState(0);
   const [intensity, setIntensity] = useState(62);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    setActiveStep(0);
+    setPlaying(false);
+  }, [demo.title]);
+
+  useEffect(() => {
+    if (!playing) {
+      return undefined;
+    }
+    const id = setInterval(() => {
+      setActiveStep((step) => (step + 1) % demo.steps.length);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [playing, demo.steps.length]);
+
   const currentStep = demo.steps[Math.min(activeStep, demo.steps.length - 1)];
   const metricValues = useMemo(
     () => buildMetrics(demo.kind, demo.metrics, activeStep, intensity),
@@ -39,23 +56,34 @@ export default function InteractiveLesson({ demo }: Props) {
           <h4>{demo.title}</h4>
           <p>{demo.summary}</p>
         </div>
-        <div className="interactive-control" aria-label="演示强度">
-          <SlidersHorizontal aria-hidden="true" size={16} />
-          <label htmlFor={`interactive-${demo.kind}`}>负载</label>
-          <input
-            id={`interactive-${demo.kind}`}
-            max={100}
-            min={20}
-            onChange={(event) => setIntensity(Number(event.target.value))}
-            type="range"
-            value={intensity}
-          />
-          <strong>{intensity}%</strong>
+        <div className="interactive-control" aria-label="演示控制">
+          <button
+            aria-pressed={playing}
+            className={`play-toggle ${playing ? 'on' : ''}`}
+            onClick={() => setPlaying((value) => !value)}
+            type="button"
+          >
+            {playing ? <Pause aria-hidden="true" size={15} /> : <Play aria-hidden="true" size={15} />}
+            <span>{playing ? '暂停演示' : '自动演示'}</span>
+          </button>
+          <div className="load-control">
+            <SlidersHorizontal aria-hidden="true" size={15} />
+            <label htmlFor={`interactive-${demo.kind}`}>负载</label>
+            <input
+              id={`interactive-${demo.kind}`}
+              max={100}
+              min={20}
+              onChange={(event) => setIntensity(Number(event.target.value))}
+              type="range"
+              value={intensity}
+            />
+            <strong>{intensity}%</strong>
+          </div>
         </div>
       </div>
 
       <div className="interactive-stage">
-        <DemoVisual kind={demo.kind} activeStep={activeStep} intensity={intensity} />
+        <DemoVisual activeStep={activeStep} intensity={intensity} kind={demo.kind} onSelect={setActiveStep} />
         <div className="interactive-side">
           <div className="metric-grid">
             {metricValues.map((metric) => (
@@ -73,7 +101,7 @@ export default function InteractiveLesson({ demo }: Props) {
         </div>
       </div>
 
-      <div className="interactive-steps" role="tablist" aria-label="教学步骤">
+      <div aria-label="教学步骤" className="interactive-steps" role="tablist">
         {demo.steps.map((step, index) => (
           <button
             aria-selected={activeStep === index}
@@ -92,23 +120,22 @@ export default function InteractiveLesson({ demo }: Props) {
   );
 }
 
-function DemoVisual({
-  kind,
-  activeStep,
-  intensity
-}: {
+interface VisualProps {
   kind: TopicInteractiveDemoKind;
   activeStep: number;
   intensity: number;
-}) {
+  onSelect: (index: number) => void;
+}
+
+function DemoVisual({ kind, activeStep, intensity, onSelect }: VisualProps) {
   if (kind === 'stack_compare') {
-    return <StackCompareVisual activeStep={activeStep} />;
+    return <StackCompareVisual activeStep={activeStep} onSelect={onSelect} />;
   }
   if (kind === 'kv_paged_attention') {
     return <KvPagedVisual activeStep={activeStep} intensity={intensity} />;
   }
   if (kind === 'batching_prefill') {
-    return <BatchingVisual activeStep={activeStep} intensity={intensity} />;
+    return <BatchingVisual activeStep={activeStep} />;
   }
   if (kind === 'ascend_operator') {
     return <AscendOperatorVisual activeStep={activeStep} intensity={intensity} />;
@@ -116,101 +143,190 @@ function DemoVisual({
   return <DistributedInferenceVisual activeStep={activeStep} intensity={intensity} />;
 }
 
-function StackCompareVisual({ activeStep }: { activeStep: number }) {
+function StackCompareVisual({ activeStep, onSelect }: { activeStep: number; onSelect: (index: number) => void }) {
   const left = ['Triton', 'TensorRT-LLM', 'CUDA Runtime', 'NCCL', 'NVIDIA GPU'];
   const right = ['MindIE-Service / vLLM-Ascend', 'MindIE-LLM / RT', 'AscendCL (CANN)', 'HCCL', 'Ascend NPU'];
+  const layers = ['服务入口', '推理引擎', '运行时', '通信', '硬件'];
+  const idx = activeStep % left.length;
   return (
     <div className="demo-visual stack-visual">
-      <StackColumn title="NVIDIA" items={left} activeIndex={activeStep} />
+      <StackColumn activeIndex={idx} items={left} onSelect={onSelect} title="NVIDIA" />
       <div className="stack-bridge">
-        <Route aria-hidden="true" size={28} />
-        <span>同一类问题，不同工程入口</span>
+        <Route aria-hidden="true" size={26} />
+        <span className="bridge-line" aria-hidden="true" />
+        <strong>{layers[idx]}</strong>
+        <span>同一层 · 两种工程入口</span>
       </div>
-      <StackColumn title="昇腾" items={right} activeIndex={activeStep} />
+      <StackColumn activeIndex={idx} items={right} onSelect={onSelect} title="昇腾" />
     </div>
   );
 }
 
-function StackColumn({ title, items, activeIndex }: { title: string; items: string[]; activeIndex: number }) {
+function StackColumn({
+  title,
+  items,
+  activeIndex,
+  onSelect
+}: {
+  title: string;
+  items: string[];
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}) {
   return (
     <div className="stack-column">
       <strong>{title}</strong>
       {items.map((item, index) => (
-        <span className={index === activeIndex % items.length ? 'active' : ''} key={item}>
+        <button
+          className={`stack-layer ${index === activeIndex ? 'active' : ''}`}
+          key={item}
+          onClick={() => onSelect(index)}
+          type="button"
+        >
           {item}
-        </span>
+        </button>
       ))}
     </div>
   );
 }
 
 function KvPagedVisual({ activeStep, intensity }: { activeStep: number; intensity: number }) {
-  const blocks = Array.from({ length: 16 }, (_, index) => index);
-  const usedBlocks = Math.min(16, Math.round((intensity / 100) * 13) + activeStep);
+  const total = 24;
+  const tokens = ['system', 'user', 'doc', 'answer'];
+  const used = Math.min(total, Math.round((intensity / 100) * 14) + activeStep * 2 + 4);
+  const captions = [
+    '无缓存：每个 token 都重算历史 K/V',
+    '追加 K/V：新 token 只写自己的卡片',
+    '分页 block：非连续分配，碎片减少',
+    '共享前缀：多请求复用 prefix block'
+  ];
   return (
     <div className="demo-visual kv-visual">
       <div className="token-lane">
-        {['system', 'user', 'doc', 'answer'].map((token, index) => (
+        {tokens.map((token, index) => (
           <span className={index <= activeStep ? 'active' : ''} key={token}>
             {token}
           </span>
         ))}
       </div>
-      <div className="cache-wall" aria-label="KV cache blocks">
-        {blocks.map((block) => (
-          <span className={block < usedBlocks ? (block % 4 === 0 ? 'shared' : 'used') : ''} key={block} />
-        ))}
+      <div aria-label="KV cache blocks" className="cache-wall">
+        {Array.from({ length: total }, (_, block) => {
+          const isUsed = block < used;
+          const isShared = isUsed && block < 4 && activeStep >= 3;
+          const isHead = block === used - 1 && activeStep >= 1;
+          const tone = isShared ? 'shared' : isUsed ? 'used' : '';
+          return (
+            <span
+              className={`${tone} ${isUsed ? 'flow' : ''} ${isHead ? 'writing' : ''}`.trim()}
+              key={block}
+              style={{ animationDelay: `${(block % 8) * 0.11}s` }}
+            />
+          );
+        })}
       </div>
       <div className="kv-caption">
         <DatabaseZap aria-hidden="true" size={18} />
-        <span>{activeStep > 1 ? '分页 block 复用前缀，减少碎片' : '每个新 token 追加 K/V 卡片'}</span>
+        <span>{captions[Math.min(activeStep, captions.length - 1)]}</span>
       </div>
     </div>
   );
 }
 
-function BatchingVisual({ activeStep, intensity }: { activeStep: number; intensity: number }) {
-  const lanes = ['A', 'B', 'C', 'D'];
+function batchPattern(step: number): { prefill: number[]; stalled: number[] } {
+  if (step <= 0) {
+    return { prefill: [3, 4, 5, 6, 7, 8], stalled: [3, 4, 5, 6, 7, 8] };
+  }
+  if (step === 1) {
+    return { prefill: [3, 4, 5, 6, 7, 8], stalled: [] };
+  }
+  if (step === 2) {
+    return { prefill: [3, 5, 7, 9], stalled: [] };
+  }
+  return { prefill: [3, 4, 6, 7, 9, 10], stalled: [] };
+}
+
+function BatchingVisual({ activeStep }: { activeStep: number }) {
+  const cols = 12;
+  const rows = ['R1', 'R2', 'R3', 'R4'];
+  const pattern = batchPattern(activeStep);
+  const labels = [
+    '静态 batch：长 prompt 冻结全场',
+    '连续补位：每步动态补入请求',
+    'Prefill 分块：与 decode 交错',
+    '延迟平衡：chunk 粒度权衡'
+  ];
   return (
     <div className="demo-visual batching-visual">
-      {lanes.map((lane, laneIndex) => (
-        <div className="request-lane" key={lane}>
-          <strong>Req {lane}</strong>
-          {Array.from({ length: 6 }, (_, index) => {
-            const isPrefill = index < 2 + (laneIndex % 2);
-            const active = index * 14 + laneIndex * 6 < intensity + activeStep * 10;
+      <div className="batch-grid">
+        <span aria-hidden="true" className="scan-line" />
+        {rows.map((row) => (
+          <div className="batch-row" key={row}>
+            <em>{row}</em>
+            {Array.from({ length: cols }, (_, col) => {
+              const stalled = pattern.stalled.includes(col);
+              const tone = stalled ? 'stalled' : col <= 10 ? 'decode on' : '';
+              return (
+                <span
+                  className={`batch-cell ${tone}`.trim()}
+                  key={col}
+                  style={{ animationDelay: `${col * 0.05}s` }}
+                />
+              );
+            })}
+          </div>
+        ))}
+        <div className="batch-row prefill-row">
+          <em>R5</em>
+          {Array.from({ length: cols }, (_, col) => {
+            const isPrefill = pattern.prefill.includes(col);
             return (
-              <span className={`${active ? 'active' : ''} ${isPrefill ? 'prefill' : 'decode'}`} key={index}>
-                {isPrefill ? 'P' : 'D'}
-              </span>
+              <span
+                className={`batch-cell ${isPrefill ? 'prefill on' : ''}`.trim()}
+                key={col}
+                style={{ animationDelay: `${col * 0.05}s` }}
+              />
             );
           })}
         </div>
-      ))}
+      </div>
       <div className="scheduler-strip">
         <span>GPU step</span>
-        <strong>{activeStep >= 2 ? 'prefill 分块穿插 decode' : '请求动态补入 batch'}</strong>
+        <strong>{labels[Math.min(activeStep, labels.length - 1)]}</strong>
       </div>
     </div>
   );
 }
 
 function AscendOperatorVisual({ activeStep, intensity }: { activeStep: number; intensity: number }) {
-  const tiles = Math.max(3, Math.round(intensity / 18));
+  const tileCount = Math.max(3, Math.min(6, Math.round(intensity / 18)));
+  const duration = Math.max(3.4, 6 - intensity / 45);
+  const zones = ['CopyIn', 'Compute', 'CopyOut'];
+  const activeZone = activeStep - 1;
   return (
     <div className="demo-visual ascend-visual">
-      {['CopyIn', 'Compute', 'CopyOut'].map((stage, stageIndex) => (
-        <div className="pipeline-column" key={stage}>
-          <strong>{stage}</strong>
-          {Array.from({ length: tiles }, (_, index) => (
-            <span className={index + stageIndex <= activeStep + 3 ? 'active' : ''} key={index}>
+      <div className="pipeline-track">
+        {zones.map((zone, index) => (
+          <div className={`zone ${index === activeZone ? 'active' : ''}`} key={zone}>
+            <span>{zone}</span>
+          </div>
+        ))}
+        <div aria-hidden="true" className="tile-flow-layer">
+          {Array.from({ length: tileCount }, (_, index) => (
+            <span
+              className="flow-tile"
+              key={index}
+              style={{
+                animationDelay: `${(index * duration) / tileCount}s`,
+                animationDuration: `${duration}s`
+              }}
+            >
               tile {index + 1}
             </span>
           ))}
         </div>
-      ))}
+      </div>
       <div className="ai-core-chip">
-        <Cpu aria-hidden="true" size={22} />
+        <Cpu aria-hidden="true" size={20} />
         <span>{'AI Core: GM→UB→Vector ｜ GM→L1→L0→Cube'}</span>
       </div>
     </div>
@@ -218,7 +334,14 @@ function AscendOperatorVisual({ activeStep, intensity }: { activeStep: number; i
 }
 
 function DistributedInferenceVisual({ activeStep, intensity }: { activeStep: number; intensity: number }) {
-  const transfer = Math.min(92, 28 + activeStep * 16 + intensity / 4);
+  const transfer = Math.min(96, 30 + activeStep * 16 + intensity / 5);
+  const routing = activeStep >= 3;
+  const labels = [
+    '单池混跑：prefill 干扰 decode',
+    'P/D 分离：两池各自优化',
+    'KV transfer：NIXL (NVIDIA) ｜ HCCL/Mooncake (昇腾)',
+    'KV-aware routing：按命中选 worker'
+  ];
   return (
     <div className="demo-visual distributed-visual">
       <div className="worker-node prefill-node">
@@ -226,21 +349,22 @@ function DistributedInferenceVisual({ activeStep, intensity }: { activeStep: num
         <span>构建 KV</span>
       </div>
       <div className="transfer-lane">
-        <Network aria-hidden="true" size={22} />
-        <div>
-          <span style={{ width: `${transfer}%` }} />
+        <Network aria-hidden="true" size={20} />
+        <div className="transfer-track">
+          <span className="fill" style={{ width: `${transfer}%` }} />
+          {activeStep >= 1 ? (
+            <>
+              <i className="packet" />
+              <i className="packet p2" />
+              <i className="packet p3" />
+            </>
+          ) : null}
         </div>
-        <small>
-          {activeStep >= 3
-            ? 'KV-aware routing：选 worker'
-            : activeStep === 2
-              ? 'KV transfer：NIXL (NVIDIA) ｜ HCCL/Mooncake (昇腾)'
-              : 'KV transfer'}
-        </small>
+        <small>{labels[Math.min(activeStep, labels.length - 1)]}</small>
       </div>
-      <div className="worker-node decode-node">
+      <div className={`worker-node decode-node ${routing ? 'routing' : ''}`}>
         <strong>Decode Pool</strong>
-        <span>逐 token 输出</span>
+        <span>{routing ? '按缓存命中选 worker' : '逐 token 输出'}</span>
       </div>
     </div>
   );

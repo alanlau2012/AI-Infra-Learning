@@ -153,7 +153,7 @@ function StackCompareVisual({ activeStep, onSelect }: { activeStep: number; onSe
       <StackColumn activeIndex={idx} items={left} onSelect={onSelect} title="NVIDIA" />
       <div className="stack-bridge">
         <Route aria-hidden="true" size={26} />
-        <span className="bridge-line" aria-hidden="true" />
+        <span className="bridge-line" aria-hidden="true" key={idx} />
         <strong>{layers[idx]}</strong>
         <span>同一层 · 两种工程入口</span>
       </div>
@@ -232,7 +232,7 @@ function KvPagedVisual({ activeStep, intensity }: { activeStep: number; intensit
   );
 }
 
-function batchPattern(step: number): { prefill: number[]; stalled: number[] } {
+export function batchPattern(step: number): { prefill: number[]; stalled: number[] } {
   if (step <= 0) {
     return { prefill: [3, 4, 5, 6, 7, 8], stalled: [3, 4, 5, 6, 7, 8] };
   }
@@ -301,7 +301,7 @@ function AscendOperatorVisual({ activeStep, intensity }: { activeStep: number; i
   const tileCount = Math.max(3, Math.min(6, Math.round(intensity / 18)));
   const duration = Math.max(3.4, 6 - intensity / 45);
   const zones = ['CopyIn', 'Compute', 'CopyOut'];
-  const activeZone = activeStep - 1;
+  const activeZone = activeStep <= 0 ? 0 : Math.min(activeStep - 1, zones.length - 1);
   return (
     <div className="demo-visual ascend-visual">
       <div className="pipeline-track">
@@ -370,7 +370,139 @@ function DistributedInferenceVisual({ activeStep, intensity }: { activeStep: num
   );
 }
 
-function buildMetrics(
+// 按 kind 分发到具体的定性响应函数。签名保持稳定（test/interactiveLesson.test.tsx 与
+// test/buildMetrics.test.ts 均依赖）。数值为示意、非 benchmark，但对每个机制保持
+// 定性正确：指标随 step / intensity 的变化方向必须符合真实机制直觉。
+function metricForKind(
+  kind: TopicInteractiveDemoKind,
+  key: TopicInteractiveMetric,
+  step: number,
+  load: number
+): { value: string; hint: string } {
+  switch (kind) {
+    case 'stack_compare':
+      return stackCompareMetric(key, step, load);
+    case 'kv_paged_attention':
+      return kvPagedMetric(key, step, load);
+    case 'batching_prefill':
+      return batchingMetric(key, step, load);
+    case 'ascend_operator':
+      return ascendMetric(key, step, load);
+    case 'distributed_inference':
+      return distributedMetric(key, step, load);
+  }
+}
+
+// T01 栈全景：对照性 demo，不表征实时性能，指标象征性温和波动。
+function stackCompareMetric(key: TopicInteractiveMetric, step: number, load: number) {
+  if (key === 'throughput') {
+    return {
+      value: `${Math.round((120 + step * 8) * (0.8 + load * 0.4))} tok/s`,
+      hint: '示意：服务层综合吞吐'
+    };
+  }
+  return {
+    value: `${Math.round(180 + step * 12 + load * 60)} GB/s`,
+    hint: '示意：跨层互联带宽'
+  };
+}
+
+// T02 KV Cache / PagedAttention：step 0 无缓存 / 1 追加 K-V / 2 分页 / 3 共享前缀。
+function kvPagedMetric(key: TopicInteractiveMetric, step: number, load: number) {
+  if (key === 'kvMemory') {
+    // token 累积使 KV 增长；分页(step2)/共享前缀(step3)压低碎片增长。
+    const growth = step <= 1 ? 1 : step === 2 ? 0.78 : 0.62;
+    const gb = Math.round((14 + load * 46) * (0.5 + step * 0.18) * growth + 6);
+    return {
+      value: `${gb} GB`,
+      hint: step >= 2 ? '分页/共享前缀压低碎片增长' : '随 token 累积增长'
+    };
+  }
+  if (key === 'throughput') {
+    // KV 越满（load 高）吞吐越受压；分页/共享(step>=2)回收容量、回升吞吐。
+    const relief = step >= 2 ? 1.25 : 1;
+    const tps = Math.round((90 + step * 22) * (1.3 - load * 0.6) * relief);
+    return {
+      value: `${Math.max(20, tps)} tok/s`,
+      hint: load > 0.8 ? 'KV 接近满，吞吐受压' : '容量回收后吞吐回升'
+    };
+  }
+  // TPOT：KV 越大越长，分页(step>=2)优化后改善。
+  const tpot = Math.max(14, Math.round((60 - step * 6) * (0.9 + load * 0.4)));
+  return { value: `${tpot} ms`, hint: '后续 token 间隔（分页优化后改善）' };
+}
+
+// T03 Continuous Batching / Chunked Prefill：step 0 静态 / 1 连续补位 / 2 chunked prefill / 3 延迟平衡。
+function batchingMetric(key: TopicInteractiveMetric, step: number, load: number) {
+  if (key === 'throughput') {
+    return {
+      value: `${Math.round((140 + step * 46) * (0.7 + load * 0.5))} tok/s`,
+      hint: '连续 batching + 切片调度提吞吐'
+    };
+  }
+  if (key === 'TTFT') {
+    // chunked prefill(step2)切分 prefill 使 TTFT 略升（反直觉）；延迟平衡(step3)回落。
+    const chunkPenalty = step === 2 ? 1.18 : step === 3 ? 1.05 : 1;
+    const ttft = Math.round(540 * (0.85 + load * 0.5) * chunkPenalty);
+    return {
+      value: `${ttft} ms`,
+      hint: step === 2 ? 'chunked prefill 切分 prefill，TTFT 略升' : '首 token 等待'
+    };
+  }
+  // TPOT：调度改善 decode 尾延迟。
+  const tpot = Math.max(12, Math.round((58 - step * 7) * (0.9 + load * 0.35)));
+  return { value: `${tpot} ms`, hint: 'decode 尾延迟随调度改善' };
+}
+
+// T04 Ascend C 算子流水：CopyIn → Compute → CopyOut。
+function ascendMetric(key: TopicInteractiveMetric, step: number, load: number) {
+  if (key === 'throughput') {
+    // pipeline 三段重叠后吞吐提升并趋于饱和。
+    const overlap = Math.min(1, 0.55 + step * 0.18);
+    return {
+      value: `${Math.round(220 * overlap * (0.7 + load * 0.5))} tok/s`,
+      hint: 'pipeline 重叠后吞吐提升'
+    };
+  }
+  const bw = Math.round((160 + step * 30) * (0.75 + load * 0.5));
+  return { value: `${bw} GB/s`, hint: 'GM↔本地内存搬运是瓶颈' };
+}
+
+// T05 P/D 分离：step 0 单池混跑 / 1 P-D 分离 / 2 KV 传输 / 3 智能路由。
+function distributedMetric(key: TopicInteractiveMetric, step: number, load: number) {
+  if (key === 'TTFT') {
+    const separate = step >= 1 ? 0.8 : 1.1;
+    return {
+      value: `${Math.round(680 * separate * (0.85 + load * 0.4))} ms`,
+      hint: step >= 1 ? 'P/D 分离：prefill 专用，TTFT 改善' : '单池 prefill 干扰 decode'
+    };
+  }
+  if (key === 'TPOT') {
+    const separate = step >= 1 ? 0.82 : 1.08;
+    return {
+      value: `${Math.max(14, Math.round(46 * separate * (0.9 + load * 0.35)))} ms`,
+      hint: step >= 1 ? 'decode 专用池，TPOT 改善' : 'prefill/decode 抢资源'
+    };
+  }
+  if (key === 'throughput') {
+    // P/D 分离(step>=1)的收益随并发(load)放大：低并发 transfer 吃收益、高并发才划算；
+    // 智能路由(step3)再叠加缓存命中加成。
+    const pdGain = step >= 1 ? 0.7 + load * 0.7 : 1;
+    const routing = step >= 3 ? 1.25 : 1;
+    return {
+      value: `${Math.round((130 + step * 20) * (0.5 + load * 0.6) * pdGain * routing)} tok/s`,
+      hint: step >= 3 ? 'KV-aware routing 提吞吐' : 'P/D 分离需高并发才划算'
+    };
+  }
+  // bandwidth：P/D 分离(step>=1)新增 KV transfer 成本。
+  const transfer = step >= 1 ? 1.5 : 1;
+  return {
+    value: `${Math.round((140 + step * 28) * (0.8 + load * 0.4) * transfer)} GB/s`,
+    hint: step >= 1 ? 'KV transfer 是 P/D 分离的新成本' : '单池无跨池传输'
+  };
+}
+
+export function buildMetrics(
   kind: TopicInteractiveDemoKind,
   metrics: TopicInteractiveMetric[],
   activeStep: number,
@@ -378,20 +510,7 @@ function buildMetrics(
 ) {
   const load = intensity / 100;
   return metrics.map((key) => {
-    if (key === 'TTFT') {
-      const base = kind === 'batching_prefill' ? 980 : kind === 'distributed_inference' ? 760 : 620;
-      return { key, value: `${Math.round(base * (1.2 - activeStep * 0.12) * load)} ms`, hint: '首 token 等待' };
-    }
-    if (key === 'TPOT') {
-      const base = kind === 'distributed_inference' ? 38 : 52;
-      return { key, value: `${Math.max(12, Math.round(base * (1.15 - activeStep * 0.09) * load))} ms`, hint: '后续 token 间隔' };
-    }
-    if (key === 'throughput') {
-      return { key, value: `${Math.round((150 + activeStep * 38) * load)} tok/s`, hint: '吞吐随调度提升' };
-    }
-    if (key === 'kvMemory') {
-      return { key, value: `${Math.round((18 + load * 44) * (kind === 'kv_paged_attention' ? 0.82 : 1))} GB`, hint: 'KV block 占用' };
-    }
-    return { key, value: `${Math.round(120 + activeStep * 35 + intensity * 1.4)} GB/s`, hint: '跨池或跨卡数据流' };
+    const result = metricForKind(kind, key, activeStep, load);
+    return { key, value: result.value, hint: result.hint };
   });
 }

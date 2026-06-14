@@ -199,4 +199,24 @@ describe('App', () => {
     expect(await screen.findByText('热重载后的正文。')).toBeInTheDocument();
     expect(window.learning.getTopic).toHaveBeenLastCalledWith('T01');
   });
+
+  it('resets interactive step state when switching topics', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByRole('heading', { level: 3, name: 'NVIDIA vs 昇腾 AI Infra 栈全景' });
+    await user.click(screen.getByRole('tab', { name: /推理引擎/ }));
+    expect(screen.getByText('TensorRT-LLM 与 CANN/MindIE 负责高效推理路径。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /T02.*KV Cache 与 PagedAttention/ }));
+    expect(await screen.findByRole('region', { name: 'KV 卡片缓存与分页房间 交互教学' })).toBeInTheDocument();
+
+    const t01Sidebar = screen.getAllByRole('button').find(
+      (button) => button.classList.contains('topic-button') && button.textContent?.includes('T01')
+    );
+    expect(t01Sidebar).toBeTruthy();
+    await user.click(t01Sidebar!);
+    expect(await screen.findByRole('region', { name: '两条 AI Infra 栈逐层对照 交互教学' })).toBeInTheDocument();
+    expect(screen.getByText('Triton、MindIE、vLLM-Ascend 面向请求接入。')).toBeInTheDocument();
+  });
 });

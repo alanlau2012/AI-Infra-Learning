@@ -38,6 +38,10 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9333');
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {

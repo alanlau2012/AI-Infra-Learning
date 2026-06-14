@@ -858,7 +858,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 38px;
+  min-height: 44px;
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -908,6 +908,7 @@ a:focus-visible {
 }
 
 .stack-column .stack-layer {
+  min-height: 44px;
   padding: 9px;
   color: var(--soft);
   font-size: 13px;
@@ -1017,7 +1018,14 @@ a:focus-visible {
 
 .cache-wall span.shared {
   border-color: rgba(var(--amber-rgb), 0.54);
+  border-style: dashed;
   background: rgba(var(--amber-rgb), 0.18);
+  box-shadow: inset 0 0 0 1px rgba(var(--amber-rgb), 0.22);
+}
+
+.cache-wall span.writing {
+  border-width: 2px;
+  border-style: solid;
 }
 
 .kv-caption,
@@ -1436,20 +1444,6 @@ a:focus-visible {
 .worker-node.routing {
   border-color: rgba(var(--green-rgb), 0.6);
   animation: layer-pulse 1.8s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stack-column .stack-layer.active,
-  .stack-bridge .bridge-line,
-  .cache-wall span.flow,
-  .cache-wall span.writing,
-  .batch-cell.on,
-  .scan-line,
-  .flow-tile,
-  .transfer-track .packet,
-  .worker-node.routing {
-    animation: none;
-  }
 }
 
 .body-fallback,
@@ -1896,8 +1890,23 @@ a:focus-visible {
   .interactive-head,
   .interactive-stage,
   .stack-visual,
-  .distributed-visual {
+  .distributed-visual,
+  .kv-visual,
+  .batching-visual,
+  .ascend-visual {
     grid-template-columns: 1fr;
+  }
+
+  .interactive-control {
+    width: 100%;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .demo-visual {
+    min-height: 240px;
   }
 
   .stack-bridge {
@@ -1918,5 +1927,17 @@ a:focus-visible {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .stack-column .stack-layer.active,
+  .stack-bridge .bridge-line,
+  .cache-wall span.flow,
+  .cache-wall span.writing,
+  .batch-cell.on,
+  .scan-line,
+  .flow-tile,
+  .transfer-track .packet,
+  .worker-node.routing {
+    animation: none !important;
   }
 }

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "build": "vite build && electron-forge package --platform=win32 --arch=x64",
     "deindex:node_modules": "node ./scripts/untrack-node_modules.mjs",
-    "verify:sources": "node ./scripts/verify-sources.mjs"
+    "verify:sources": "node ./scripts/verify-sources.mjs",
+    "smoke:ui": "node ./scripts/ui-smoke.mjs"
   },
   "keywords": [],
   "author": "Alan Lau",
@@ -46,6 +47,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^41.3.0",
     "jsdom": "^29.0.2",
+    "playwright": "^1.49.1",
     "typescript": "^6.0.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.9"

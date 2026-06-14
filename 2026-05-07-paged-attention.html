@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PagedAttention — KV Cache 的虚拟内存</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #faf8f3;
+    --bg-alt: #f5f2ea;
+    --ink: #1a1918;
+    --ink-2: #2a2623;
+    --muted: #6b6660;
+    --rule: rgba(26, 25, 24, 0.12);
+    --rule-strong: rgba(26, 25, 24, 0.28);
+    --accent: #a8322d;        /* oxblood */
+    --blue: #1f3a5f;          /* prussian */
+    --blue-soft: #6b89a8;     /* dusty */
+    --sage: #8a9a6b;
+    --ochre: #b8823a;
+    --waste: #d9c9a3;         /* faded sand for unused */
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.7;
+    font-feature-settings: "ss01", "kern";
+  }
+
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 72px 32px 120px;
+  }
+
+  .meta {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .meta span + span::before { content: " · "; margin: 0 6px; color: var(--rule-strong); }
+
+  h1.display {
+    font-family: "Source Serif 4", serif;
+    font-weight: 500;
+    font-size: 44px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+  }
+  h1.display em { color: var(--accent); font-style: italic; font-weight: 500; }
+
+  .dek {
+    font-family: "Source Serif 4", serif;
+    font-style: italic;
+    font-size: 19px;
+    color: var(--ink-2);
+    max-width: 640px;
+    margin: 0 0 40px;
+  }
+
+  nav.toc {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+    margin-bottom: 56px;
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  nav.toc a {
+    color: var(--ink-2);
+    text-decoration: none;
+    margin-right: 22px;
+  }
+  nav.toc a:hover { color: var(--accent); }
+  nav.toc .roman { color: var(--muted); margin-right: 6px; }
+
+  section.s {
+    margin-bottom: 64px;
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    border-top: 1px solid var(--rule);
+    padding-top: 28px;
+    margin-bottom: 18px;
+  }
+  .roman {
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  h2 {
+    font-family: "Source Serif 4", serif;
+    font-weight: 500;
+    font-size: 28px;
+    line-height: 1.25;
+    margin: 0;
+    letter-spacing: -0.005em;
+  }
+
+  p { margin: 0 0 16px; max-width: 720px; }
+  p + p { margin-top: 0; }
+
+  .lede::first-letter {
+    font-family: "Source Serif 4", serif;
+    font-size: 48px;
+    line-height: 0.9;
+    float: left;
+    margin: 4px 8px 0 -2px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  code, .mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.92em;
+    letter-spacing: 0;
+  }
+  p code, li code {
+    background: var(--bg-alt);
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 0.86em;
+  }
+
+  .insight {
+    border-left: 2px solid var(--accent);
+    padding: 4px 0 4px 18px;
+    margin: 24px 0;
+    font-style: italic;
+    color: var(--ink-2);
+    max-width: 700px;
+  }
+  .insight .label {
+    font-family: "Instrument Sans", sans-serif;
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+
+  .figure {
+    margin: 28px 0 8px;
+  }
+  .caption {
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    max-width: 720px;
+    line-height: 1.55;
+  }
+  .caption .num {
+    font-weight: 600;
+    color: var(--ink-2);
+    margin-right: 6px;
+    letter-spacing: 0.06em;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px 28px;
+    align-items: center;
+    margin: 14px 0 8px;
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 13px;
+  }
+  .ctrl {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 200px;
+  }
+  .ctrl-label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ctrl-value {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    color: var(--ink);
+    min-width: 56px;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 200px;
+    height: 2px;
+    background: var(--rule-strong);
+    border-radius: 0;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1.5px solid var(--accent);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1.5px solid var(--accent);
+    cursor: pointer;
+  }
+
+  button.btn {
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink);
+    padding: 7px 14px;
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.15s ease-out;
+  }
+  button.btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  button.btn .play {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    transform: translateY(1px);
+  }
+
+  canvas { display: block; max-width: 100%; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 12px;
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    vertical-align: -1px;
+    border: 1px solid var(--rule);
+  }
+
+  .stats {
+    display: flex;
+    gap: 36px;
+    margin: 18px 0 6px;
+    font-family: "Instrument Sans", sans-serif;
+  }
+  .stat .k {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .stat .v {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .stat .v.accent { color: var(--accent); }
+  .stat .v.blue { color: var(--blue); }
+
+  table.calc {
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+  }
+  table.calc td, table.calc th {
+    padding: 7px 18px 7px 0;
+    border-bottom: 1px solid var(--rule);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.calc th {
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  table.calc tr.total td {
+    border-top: 1px solid var(--rule-strong);
+    border-bottom: none;
+    padding-top: 10px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  table.calc .lbl { color: var(--muted); }
+
+  ul.remember {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  ul.remember li {
+    padding: 14px 0 14px 36px;
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+    max-width: 720px;
+  }
+  ul.remember li:last-child { border-bottom: none; }
+  ul.remember li::before {
+    content: counter(remember-i, lower-roman) ".";
+    counter-increment: remember-i;
+    position: absolute;
+    left: 0;
+    top: 14px;
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  ul.remember { counter-reset: remember-i; }
+
+  footer.colophon {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  footer.colophon a { color: var(--blue); text-decoration: none; }
+  footer.colophon a:hover { text-decoration: underline; }
+
+  /* Tab compare */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 16px;
+  }
+  .tab {
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 13px;
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-bottom: -1px;
+  }
+  .tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  @media (max-width: 720px) {
+    h1.display { font-size: 32px; }
+    h2 { font-size: 22px; }
+    .page { padding: 40px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="meta">
+    <span>2026 · 05 · 07</span><span>AI Infra Daily</span><span>~5 min</span>
+  </div>
+
+  <h1 class="display">PagedAttention &mdash; 给 KV Cache <em>装上一套虚拟内存</em></h1>
+  <p class="dek">为什么 vLLM 能比朴素实现挤出 2&ndash;4× 的吞吐？答案不在 attention kernel，而在显存 allocator。</p>
+
+  <nav class="toc">
+    <a href="#s1"><span class="roman">I.</span>碎片之罪</a>
+    <a href="#s2"><span class="roman">II.</span>分页类比</a>
+    <a href="#s3"><span class="roman">III.</span>块表实景</a>
+    <a href="#s4"><span class="roman">IV.</span>前缀共享</a>
+    <a href="#s5"><span class="roman">V.</span>信封背面</a>
+  </nav>
+
+  <!-- ============ I. ============ -->
+  <section class="s" id="s1">
+    <div class="section-head"><span class="roman">I.</span><h2>朴素 KV Cache 的两宗罪</h2></div>
+
+    <p class="lede">朴素的实现把每个请求的 KV cache 当成一段连续 tensor：按 <code>max_seq_len</code> 一次性预留显存。问题是，<code>max_seq_len</code> 通常设到 4K、8K，但实际请求 90% 落在 200&ndash;1000 token。预留出去的显存"压住"了 GPU，但里面真正承载 token 的只有一小段。</p>
+
+    <p>第二宗罪：当一个请求结束、另一个请求开始时，留下的"洞"未必能塞下新请求的 max。即便整体空闲显存够用，<strong>外部碎片</strong>也让你装不下下一个请求。这两宗罪共同把可并发数压到极低 &mdash; 在 vLLM 论文里，朴素实现的 KV 利用率往往不到 40%。</p>
+
+    <div class="figure">
+      <div class="controls">
+        <div class="ctrl">
+          <span class="ctrl-label">max_seq_len 预留</span>
+          <div class="ctrl-row">
+            <input type="range" id="r-max" min="512" max="8192" step="256" value="4096" />
+            <span class="ctrl-value" id="r-max-v">4096</span>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span class="ctrl-label">实际平均 token 数</span>
+          <div class="ctrl-row">
+            <input type="range" id="r-act" min="64" max="4096" step="64" value="512" />
+            <span class="ctrl-value" id="r-act-v">512</span>
+          </div>
+        </div>
+      </div>
+      <canvas id="c-waste" width="780" height="180"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="k">已用</span><span class="v blue" id="s-used">512</span></div>
+        <div class="stat"><span class="k">浪费</span><span class="v accent" id="s-waste">3584</span></div>
+        <div class="stat"><span class="k">利用率</span><span class="v" id="s-util">12.5%</span></div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:#6b89a8"></span>实际承载 token 的显存</span>
+        <span><span class="swatch" style="background:#d9c9a3"></span>内部碎片（预留但未用）</span>
+      </div>
+      <div class="caption"><span class="num">FIG. 1</span>八条并发请求，每条都按 max_seq_len 预留连续显存。拖动滑块，观察"实际/预留"的比值如何决定显存利用率。当 max_seq_len = 4096、实际 = 512 时，<span class="mono">87.5%</span> 的显存被白白锁住。</div>
+    </div>
+
+    <div class="insight"><span class="label">Insight</span>朴素 KV cache 的底层假设 &mdash; <em>每个请求一段连续显存</em> &mdash; 与 LLM 推理"长度高度可变 + 批次动态变化"的现实正相反。这是 PagedAttention 之前所有花哨调度都治不好的病根。</div>
+  </section>
+
+  <!-- ============ II. ============ -->
+  <section class="s" id="s2">
+    <div class="section-head"><span class="roman">II.</span><h2>操作系统教过我们怎么办</h2></div>
+
+    <p>1960 年代的操作系统遇到过同一个问题：进程的内存需求是可变的，把每个进程都塞到一段连续物理内存里，会留下大量塞不进新进程的"洞"。解法是<strong>分页 (paging)</strong> &mdash; 把物理内存切成固定大小的 page，把进程的虚拟地址通过 page table 映射到物理 page。物理上不连续，逻辑上连续。</p>
+
+    <p>PagedAttention 把这一招直接搬到 KV cache。把 GPU 显存切成固定大小的 <strong>KV block</strong>（典型 16 个 token）。每个 sequence 维护一张 <strong>block table</strong>，把"逻辑 token 位置"映射到"物理 block 编号"。Attention kernel 在读 K/V 时不再假设连续 &mdash; 它先查 block table，再去物理 block 里取。</p>
+
+    <div class="figure">
+      <div class="tabs">
+        <button class="tab active" data-tab="naive">朴素 &middot; Contiguous</button>
+        <button class="tab" data-tab="paged">PagedAttention &middot; Block Table</button>
+      </div>
+      <canvas id="c-compare" width="780" height="240"></canvas>
+      <div class="caption"><span class="num">FIG. 2</span>左/上：朴素实现里 sequence 必须落在一段连续显存上；当三条 sequence 大小不一时，剩余显存装不下第四条。右/下：分页后，sequence 由若干个分散的 block 组成，第四条只要凑齐够数的空闲 block 即可入队。</div>
+    </div>
+
+    <div class="insight"><span class="label">Insight</span>"逻辑连续、物理离散" &mdash; 这一行字定义了 PagedAttention 的全部价值。剩下的工程都是在保护这个不变量：block table 的查表开销要小、attention kernel 要支持非连续读、block 分配/释放要原子化。</div>
+  </section>
+
+  <!-- ============ III. ============ -->
+  <section class="s" id="s3">
+    <div class="section-head"><span class="roman">III.</span><h2>块表的实景演示</h2></div>
+
+    <p>理论说完，看着块表长出来更直观。下面有一个 <span class="mono">block_size = 4 tokens</span> 的小型显存池，共 16 个 block。三条 sequence 在并发推理中逐 token 增长。每生成 4 个新 token，sequence 才会从空闲池里"申请"一个新 block。点击 ▷ 让模拟跑起来。</p>
+
+    <div class="figure">
+      <div class="controls">
+        <button class="btn" id="b-play"><svg class="play" viewBox="0 0 8 8"><polygon points="0,0 8,4 0,8" fill="currentColor"/></svg><span id="b-play-label">Play</span></button>
+        <button class="btn" id="b-step">+ 1 step</button>
+        <button class="btn" id="b-reset">Reset</button>
+        <div class="ctrl">
+          <span class="ctrl-label">速度</span>
+          <div class="ctrl-row">
+            <input type="range" id="r-speed" min="1" max="10" step="1" value="4" />
+            <span class="ctrl-value" id="r-speed-v">4×</span>
+          </div>
+        </div>
+      </div>
+      <canvas id="c-pool" width="780" height="380"></canvas>
+      <div class="legend">
+        <span><span class="swatch" style="background:#6b89a8"></span>Seq A</span>
+        <span><span class="swatch" style="background:#a8322d"></span>Seq B</span>
+        <span><span class="swatch" style="background:#8a9a6b"></span>Seq C</span>
+        <span><span class="swatch" style="background:#f5f2ea;border:1px dashed #6b6660"></span>空闲 block</span>
+      </div>
+      <div class="caption"><span class="num">FIG. 3</span>显存池 16 块，每块 4 token。三条 sequence 在 decode，B 在 step 24 后会主动 release 全部 block（模拟请求结束）。<strong>注意 B 释放后留下的空洞在下一刻就被 A 或 C 复用</strong> &mdash; 这就是分页的胜利：不需要"压实/搬移"，离散的洞天然可用。</div>
+    </div>
+
+    <div class="insight"><span class="label">Insight</span>朴素实现的"洞"是<strong>整块连续区域</strong>，必须等到能塞下一个请求 max_seq_len 才有用；分页之后的"洞"是<strong>一个 block</strong>，几乎所有新增 token 都能立刻填进去。空闲的颗粒度从 KB 级降到了几十 token 级。</div>
+  </section>
+
+  <!-- ============ IV. ============ -->
+  <section class="s" id="s4">
+    <div class="section-head"><span class="roman">IV.</span><h2>前缀共享：免费的并行采样</h2></div>
+
+    <p>分页带来一个意外但重要的红利。当一条请求需要 <span class="mono">n=4</span> 个 sample 并行解码（beam search、self-consistency、best-of-n）时，它们共享 system prompt + 用户 query 的前缀。朴素实现要把这段 KV 复制 4 份。分页之后，4 条 sequence 的 block table 在前缀部分指向<strong>同一组物理 block</strong>，只在分叉点之后各自申请新 block。</p>
+
+    <p>vLLM 用一个简单的 <strong>引用计数</strong>实现 copy-on-write：共享的 block 计数 = 分支数；当某条 branch 要写入这个 block 时，先 fork 出一个新 block，把旧内容 memcpy 过去，引用计数 &minus; 1。一段 2K token 的 system prompt 在 n=8 采样下省下的不只是显存，还有 prefill 算力。</p>
+
+    <div class="figure">
+      <div class="controls">
+        <div class="ctrl">
+          <span class="ctrl-label">前缀长度 (tokens)</span>
+          <div class="ctrl-row">
+            <input type="range" id="r-prefix" min="0" max="48" step="4" value="20" />
+            <span class="ctrl-value" id="r-prefix-v">20</span>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span class="ctrl-label">并行采样数 n</span>
+          <div class="ctrl-row">
+            <input type="range" id="r-fanout" min="1" max="6" step="1" value="4" />
+            <span class="ctrl-value" id="r-fanout-v">4</span>
+          </div>
+        </div>
+      </div>
+      <canvas id="c-share" width="780" height="280"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="k">朴素显存</span><span class="v" id="s-naive-mem">160 tok</span></div>
+        <div class="stat"><span class="k">分页 + 共享</span><span class="v accent" id="s-paged-mem">68 tok</span></div>
+        <div class="stat"><span class="k">节省</span><span class="v blue" id="s-save">57.5%</span></div>
+      </div>
+      <div class="caption"><span class="num">FIG. 4</span>n 条采样分支共享前缀的若干 block；只在第一个 decode token 之后开始分叉。前缀越长、n 越大，分页带来的相对收益越大。</div>
+    </div>
+
+    <div class="insight"><span class="label">Insight</span>共享前缀这件事在朴素实现里需要<em>专门写一个</em> prefix-cache 模块，逻辑复杂、容易写出 bug。在分页框架下，它退化为"两个 block table 的某些条目指向同一个 block 编号"&mdash; 几乎是 free lunch。这是 PagedAttention 在工程上极其优雅的地方。</div>
+  </section>
+
+  <!-- ============ V. ============ -->
+  <section class="s" id="s5">
+    <div class="section-head"><span class="roman">V.</span><h2>信封背面 &middot; Llama-3-70B 在 80GB H100 上能塞多少？</h2></div>
+
+    <p>用真实数字感受一下分页的杠杆。Llama-3-70B 走 GQA：80 层、8 个 KV head、head_dim 128、FP16。一个 token 的 KV bytes：</p>
+
+    <table class="calc">
+      <tr><th>项</th><th>数值</th><th>说明</th></tr>
+      <tr><td>layers</td><td>80</td><td class="lbl">decoder block 数</td></tr>
+      <tr><td>kv_heads</td><td>8</td><td class="lbl">GQA 分组后的 KV 头数</td></tr>
+      <tr><td>head_dim</td><td>128</td><td class="lbl">单头维度</td></tr>
+      <tr><td>dtype</td><td>2 B</td><td class="lbl">FP16 / BF16</td></tr>
+      <tr><td>K + V</td><td>× 2</td><td class="lbl">K 和 V 各存一份</td></tr>
+      <tr class="total"><td>每 token KV</td><td>320 KB</td><td class="lbl">80 × 8 × 128 × 2 × 2</td></tr>
+    </table>
+
+    <p>给定 80GB 的 H100，去掉 weights ~140GB（先假设走 TP=2 切 70GB）+ activation/runtime ~5GB，留给 KV 的预算约 <span class="mono">5GB</span> 在单卡侧。注意：以下是"单卡 KV 预算"的对比，重点是<strong>同样预算下，分页与朴素能装多少</strong>。</p>
+
+    <table class="calc">
+      <tr><th>策略</th><th>每请求占用</th><th>可并发数</th></tr>
+      <tr><td>朴素 (max_seq_len=4096)</td><td><span class="mono">4096 × 320KB ≈ 1.31 GB</span></td><td><span class="mono">~3</span></td></tr>
+      <tr><td>PagedAttention (avg=512)</td><td><span class="mono">512 × 320KB ≈ 160 MB</span> + 1 块 padding</td><td><span class="mono">~30</span></td></tr>
+    </table>
+
+    <p>同样一张卡，<strong>并发数从 3 跳到 30</strong>，吞吐近乎线性放大。再叠加前缀共享，<span class="mono">n=4</span> 的 best-of-n 场景里前缀部分只占 1/4，显存进一步松绑。这个 10× 量级的杠杆，是 vLLM 论文里那条"2&ndash;4× 吞吐"曲线的物理来源 &mdash; 工程实测会被 attention kernel 开销和 batch composition 拖一些，但数量级正确。</p>
+
+    <p>对华为生态：<strong>MindIE LLM</strong> 同样内置了 paged-KV 调度，块大小通常取得比 vLLM 的 16 更大（具体默认值以对应版本文档为准），以适配昇腾 HBM 的访存粒度。<strong>HCCL</strong> 的 collective 与 paged 调度耦合，在 TP 切分时往往需要 align 到 block 边界，这是把 vLLM 移植到 Ascend 时容易踩坑的细节。</p>
+
+    <div class="insight"><span class="label">示意场景</span>以一台单机昇腾节点跑某 30B 级模型为例（以下数值仅为示意）：朴素 KV 实现下并发可能被压到个位数；切换到 paged 调度后并发可显著提升，瓶颈从"显存装不下"迁移到"prefill 算力打满" &mdash; 这是一个健康的瓶颈迁移，意味着 KV 这条路真的疏通了。</div>
+  </section>
+
+  <!-- ============ Closing ============ -->
+  <section class="s" id="s6">
+    <div class="section-head"><span class="roman">VI.</span><h2>What to remember</h2></div>
+    <ul class="remember">
+      <li><strong>PagedAttention 不是新 attention 算法</strong> &mdash; 它是 KV cache 的 allocator 重设计。Attention kernel 多出一次 block_table 查表，几乎不影响 FLOPS。</li>
+      <li><strong>block_size 是关键工程参数</strong>。vLLM 默认 16，MindIE 的块粒度通常更大（以版本文档为准）。太小则 block_table 开销和 kernel launch overhead 上升；太大则碎片回归朴素实现的困境。</li>
+      <li><strong>外部碎片几乎被消灭</strong>，内部碎片只剩"最后一个 block 没填满"的零头 &mdash; 平均 = block_size / 2 个 token，相对预留 max_seq_len 那种浪费可以忽略。</li>
+      <li><strong>前缀共享是分页框架的副产品</strong>，不是单独模块。Beam search、best-of-n、system prompt 复用都从同一个引用计数机制中受益。</li>
+      <li><strong>瓶颈迁移意识</strong>：分页解决显存碎片之后，下一个瓶颈通常是 prefill 算力或 MoE 路由不均。一次只解决一个瓶颈，别在显存还没疏通时去优化 attention kernel。</li>
+    </ul>
+  </section>
+
+  <footer class="colophon">
+    PagedAttention 原始论文 &middot; <a href="https://arxiv.org/abs/2309.06180" target="_blank" rel="noopener">Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention" (SOSP 2023)</a>. 数据点参考 vLLM 0.6 文档与 MindIE LLM 1.0 release notes。下一站可探索：分页之上的 <em>prefix tree caching</em>（不仅共享同一请求内的前缀，还跨请求共享相同 system prompt）以及 <em>disaggregated prefill/decode</em>（把两端分到不同卡上跑）。
+  </footer>
+</div>
+
+<script>
+(() => {
+  // ============= Section I. waste viz =============
+  const cWaste = document.getElementById('c-waste');
+  const ctxW = cWaste.getContext('2d');
+  const rMax = document.getElementById('r-max');
+  const rAct = document.getElementById('r-act');
+  const rMaxV = document.getElementById('r-max-v');
+  const rActV = document.getElementById('r-act-v');
+  const sUsed = document.getElementById('s-used');
+  const sWaste = document.getElementById('s-waste');
+  const sUtil = document.getElementById('s-util');
+
+  function fmt(n){ return n>=1024 ? (n/1024).toFixed(1)+'K' : ''+n; }
+
+  function drawWaste(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = cWaste.clientWidth || 780, h = 180;
+    if (cWaste.width !== w*dpr) { cWaste.width = w*dpr; cWaste.height = h*dpr; }
+    ctxW.setTransform(dpr,0,0,dpr,0,0);
+    ctxW.clearRect(0,0,w,h);
+
+    const max = +rMax.value, act = Math.min(+rAct.value, max);
+    const N = 8;
+    const padL = 16, padR = 16, padT = 14, padB = 18;
+    const rowH = (h - padT - padB) / N;
+    const barH = rowH * 0.62;
+    const barTop = padT;
+    const innerW = w - padL - padR;
+
+    for (let i=0; i<N; i++){
+      // jitter actual a bit per row to look real
+      const jitter = 0.6 + 0.8 * (Math.sin(i*1.3 + 0.7) * 0.5 + 0.5);
+      const aRow = Math.min(max, Math.round(act * jitter));
+      const usedFrac = aRow / max;
+      const y = barTop + i*rowH + (rowH-barH)/2;
+
+      // waste background
+      ctxW.fillStyle = '#d9c9a3';
+      ctxW.fillRect(padL, y, innerW, barH);
+      // used
+      ctxW.fillStyle = '#6b89a8';
+      ctxW.fillRect(padL, y, innerW * usedFrac, barH);
+      // outline
+      ctxW.strokeStyle = 'rgba(26,25,24,0.15)';
+      ctxW.lineWidth = 1;
+      ctxW.strokeRect(padL+0.5, y+0.5, innerW-1, barH-1);
+    }
+
+    rMaxV.textContent = fmt(max);
+    rActV.textContent = fmt(act);
+    sUsed.textContent = fmt(act);
+    sWaste.textContent = fmt(max - act);
+    sUtil.textContent = (act/max*100).toFixed(1) + '%';
+  }
+  rMax.addEventListener('input', drawWaste);
+  rAct.addEventListener('input', drawWaste);
+  window.addEventListener('resize', () => { drawWaste(); drawCompare(); drawPool(); drawShare(); });
+  drawWaste();
+
+  // ============= Section II. compare tabs =============
+  const cCmp = document.getElementById('c-compare');
+  const ctxC = cCmp.getContext('2d');
+  let cmpTab = 'naive';
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      cmpTab = t.dataset.tab;
+      drawCompare();
+    });
+  });
+
+  function drawCompare(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = cCmp.clientWidth || 780, h = 240;
+    if (cCmp.width !== w*dpr) { cCmp.width = w*dpr; cCmp.height = h*dpr; }
+    ctxC.setTransform(dpr,0,0,dpr,0,0);
+    ctxC.clearRect(0,0,w,h);
+
+    const padL = 60, padR = 16, padT = 30, padB = 20;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+    const POOL = 32; // total slots
+    const slotW = innerW / POOL;
+    const slotH = 32;
+    const rowGap = 16;
+
+    // Row 1: total memory pool
+    const labelFont = '11px "Instrument Sans", sans-serif';
+    ctxC.font = labelFont;
+    ctxC.fillStyle = '#6b6660';
+    ctxC.textAlign = 'right';
+    ctxC.textBaseline = 'middle';
+
+    if (cmpTab === 'naive'){
+      // contiguous: 3 sequences A(8), B(11), C(6); free = 7 contiguous at end. New D needs 9 -> can't fit
+      ctxC.fillText('显存', padL - 10, padT + slotH/2);
+      const segs = [
+        {name:'A', size: 8,  color:'#6b89a8'},
+        {name:'B', size: 11, color:'#a8322d'},
+        {name:'C', size: 6,  color:'#8a9a6b'},
+        {name:'·', size: 7,  color:null}, // free contiguous
+      ];
+      let x = padL;
+      for (const s of segs){
+        const sw = slotW * s.size;
+        if (s.color){
+          ctxC.fillStyle = s.color;
+          ctxC.fillRect(x, padT, sw, slotH);
+          ctxC.fillStyle = '#faf8f3';
+          ctxC.font = '600 12px "Instrument Sans", sans-serif';
+          ctxC.textAlign = 'center'; ctxC.textBaseline = 'middle';
+          ctxC.fillText(s.name + ' (' + s.size + ')', x + sw/2, padT + slotH/2);
+        } else {
+          ctxC.fillStyle = '#f5f2ea';
+          ctxC.fillRect(x, padT, sw, slotH);
+          ctxC.strokeStyle = 'rgba(26,25,24,0.28)';
+          ctxC.setLineDash([3,3]);
+          ctxC.strokeRect(x+0.5, padT+0.5, sw-1, slotH-1);
+          ctxC.setLineDash([]);
+          ctxC.fillStyle = '#6b6660';
+          ctxC.font = '11px "Instrument Sans", sans-serif';
+          ctxC.textAlign = 'center'; ctxC.textBaseline = 'middle';
+          ctxC.fillText('free ' + s.size, x + sw/2, padT + slotH/2);
+        }
+        ctxC.strokeStyle = 'rgba(26,25,24,0.4)';
+        ctxC.strokeRect(x+0.5, padT+0.5, sw-1, slotH-1);
+        x += sw;
+      }
+
+      // Row 2: pending request D (size=9) — show it can't fit
+      const pendY = padT + slotH + rowGap + 30;
+      ctxC.fillStyle = '#6b6660';
+      ctxC.font = labelFont;
+      ctxC.textAlign = 'right'; ctxC.textBaseline = 'middle';
+      ctxC.fillText('待入 D=9', padL - 10, pendY + slotH/2);
+      const dW = slotW * 9;
+      ctxC.fillStyle = '#a8322d';
+      ctxC.globalAlpha = 0.18;
+      ctxC.fillRect(padL, pendY, dW, slotH);
+      ctxC.globalAlpha = 1;
+      ctxC.strokeStyle = '#a8322d';
+      ctxC.setLineDash([4,3]);
+      ctxC.strokeRect(padL+0.5, pendY+0.5, dW-1, slotH-1);
+      ctxC.setLineDash([]);
+      ctxC.fillStyle = '#a8322d';
+      ctxC.font = '600 12px "Instrument Sans", sans-serif';
+      ctxC.textAlign = 'center'; ctxC.textBaseline = 'middle';
+      ctxC.fillText('D 需要连续 9 块，但最大空洞 = 7  ✗', padL + dW + 130, pendY + slotH/2);
+
+    } else {
+      // paged: same 3 sequences as scattered blocks; free blocks scattered too; D fits
+      ctxC.fillText('显存', padL - 10, padT + slotH/2);
+      // Layout: A=8, B=11, C=6, free=7 but interleaved
+      // Construct an interleaved layout:
+      const owner = [
+        'A','A','B','A','C','B','B','A',  'C','A','·','B','A','·','B','C',
+        'B','C','·','A','B','·','C','B',  '·','A','B','·','C','B','·','C'
+      ];
+      const colors = {'A':'#6b89a8','B':'#a8322d','C':'#8a9a6b','·':null};
+      let x = padL;
+      for (let i=0;i<POOL;i++){
+        const o = owner[i];
+        const col = colors[o];
+        if (col){
+          ctxC.fillStyle = col;
+          ctxC.fillRect(x+1, padT+1, slotW-2, slotH-2);
+          ctxC.fillStyle = 'rgba(250,248,243,0.92)';
+          ctxC.font = '500 10px "JetBrains Mono", monospace';
+          ctxC.textAlign = 'center'; ctxC.textBaseline = 'middle';
+          ctxC.fillText(o, x + slotW/2, padT + slotH/2);
+        } else {
+          ctxC.fillStyle = '#f5f2ea';
+          ctxC.fillRect(x+1, padT+1, slotW-2, slotH-2);
+          ctxC.strokeStyle = 'rgba(26,25,24,0.22)';
+          ctxC.setLineDash([2,2]);
+          ctxC.strokeRect(x+1.5, padT+1.5, slotW-3, slotH-3);
+          ctxC.setLineDash([]);
+        }
+        ctxC.strokeStyle = 'rgba(26,25,24,0.18)';
+        ctxC.strokeRect(x+0.5, padT+0.5, slotW-1, slotH-1);
+        x += slotW;
+      }
+
+      // Row 2: D = 9 — assembled from any 9 free blocks
+      const pendY = padT + slotH + rowGap + 30;
+      ctxC.fillStyle = '#6b6660';
+      ctxC.font = labelFont;
+      ctxC.textAlign = 'right'; ctxC.textBaseline = 'middle';
+      ctxC.fillText('待入 D=9', padL - 10, pendY + slotH/2);
+
+      // visualize D as 9 distributed cells in same row
+      const freeIdx = [];
+      owner.forEach((o,i)=>{ if(o==='·') freeIdx.push(i); });
+      // need 9, but we only have 7 in this layout — show 7 fit, top up message
+      const dCount = Math.min(9, freeIdx.length);
+      // scatter D placeholders to align with free positions but on this row
+      ctxC.fillStyle = '#a8322d';
+      ctxC.globalAlpha = 0.85;
+      for (let i=0;i<dCount;i++){
+        const xx = padL + freeIdx[i]*slotW;
+        ctxC.fillRect(xx+1, pendY+1, slotW-2, slotH-2);
+        ctxC.globalAlpha = 1;
+        ctxC.fillStyle = 'rgba(250,248,243,0.9)';
+        ctxC.font = '500 10px "JetBrains Mono", monospace';
+        ctxC.textAlign = 'center'; ctxC.textBaseline = 'middle';
+        ctxC.fillText('D', xx + slotW/2, pendY + slotH/2);
+        ctxC.fillStyle = '#a8322d';
+        ctxC.globalAlpha = 0.85;
+      }
+      ctxC.globalAlpha = 1;
+      ctxC.fillStyle = '#a8322d';
+      ctxC.font = '600 12px "Instrument Sans", sans-serif';
+      ctxC.textAlign = 'left'; ctxC.textBaseline = 'middle';
+      ctxC.fillText('D 用 7 个分散 block 立刻入队 ✓ （余 2 块在新增显存到位时再申请）', padL, pendY + slotH + 22);
+    }
+  }
+  drawCompare();
+
+  // ============= Section III. live pool simulation =============
+  const cPool = document.getElementById('c-pool');
+  const ctxP = cPool.getContext('2d');
+  const bPlay = document.getElementById('b-play');
+  const bPlayLabel = document.getElementById('b-play-label');
+  const bStep = document.getElementById('b-step');
+  const bReset = document.getElementById('b-reset');
+  const rSpeed = document.getElementById('r-speed');
+  const rSpeedV = document.getElementById('r-speed-v');
+
+  const POOL_SIZE = 16;
+  const BLOCK_TOK = 4;
+  const SEQ_COLORS = {A:'#6b89a8', B:'#a8322d', C:'#8a9a6b'};
+
+  let state, stepCount;
+
+  function resetState(){
+    state = {
+      pool: new Array(POOL_SIZE).fill(null), // each slot: null or {seq, idx}
+      seqs: {
+        A: { tokens: 8,  alive: true,  blocks: [] },
+        B: { tokens: 12, alive: true,  blocks: [] },
+        C: { tokens: 4,  alive: true,  blocks: [] },
+      },
+    };
+    stepCount = 0;
+    // Initial allocation: place initial tokens
+    ['A','B','C'].forEach(name => {
+      const need = Math.ceil(state.seqs[name].tokens / BLOCK_TOK);
+      for (let i=0;i<need;i++) allocBlock(name);
+    });
+  }
+
+  function allocBlock(seq){
+    const free = state.pool.findIndex(s => s === null);
+    if (free === -1) return false;
+    state.pool[free] = { seq, idx: state.seqs[seq].blocks.length };
+    state.seqs[seq].blocks.push(free);
+    return true;
+  }
+  function releaseSeq(seq){
+    state.seqs[seq].alive = false;
+    for (const b of state.seqs[seq].blocks){
+      state.pool[b] = null;
+    }
+    state.seqs[seq].blocks = [];
+  }
+
+  function step(){
+    stepCount++;
+    // sequence B ends at step 24 (decode-driven event)
+    if (stepCount === 24 && state.seqs.B.alive){
+      releaseSeq('B');
+    }
+    // grow alive seqs by 1 token
+    ['A','B','C'].forEach(name => {
+      const s = state.seqs[name];
+      if (!s.alive) return;
+      s.tokens++;
+      const need = Math.ceil(s.tokens / BLOCK_TOK);
+      while (s.blocks.length < need){
+        if (!allocBlock(name)) {
+          // OOM-ish: mark it but don't crash; in practice scheduler would preempt
+          break;
+        }
+      }
+    });
+    // C might also end at step 36 to free up more
+    if (stepCount === 36 && state.seqs.C.alive){
+      releaseSeq('C');
+    }
+    // restart C as a new request after step 40
+    if (stepCount === 40 && !state.seqs.C.alive){
+      state.seqs.C = { tokens: 6, alive: true, blocks: [] };
+      const need = Math.ceil(6 / BLOCK_TOK);
+      for (let i=0;i<need;i++) allocBlock('C');
+    }
+    // Also restart B as new request after step 50
+    if (stepCount === 50 && !state.seqs.B.alive){
+      state.seqs.B = { tokens: 4, alive: true, blocks: [] };
+      const need = Math.ceil(4 / BLOCK_TOK);
+      for (let i=0;i<need;i++) allocBlock('B');
+    }
+  }
+
+  function drawPool(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = cPool.clientWidth || 780, h = 380;
+    if (cPool.width !== w*dpr){ cPool.width=w*dpr; cPool.height=h*dpr; }
+    ctxP.setTransform(dpr,0,0,dpr,0,0);
+    ctxP.clearRect(0,0,w,h);
+
+    // Top: physical pool grid 4×4
+    const padL = 16, padT = 14;
+    const cols = 8, rows = POOL_SIZE/cols;
+    const cellW = 80, cellH = 56, gap = 8;
+    const gridW = cols * cellW + (cols-1)*gap;
+
+    ctxP.fillStyle = '#6b6660';
+    ctxP.font = '11px "Instrument Sans", sans-serif';
+    ctxP.textAlign = 'left'; ctxP.textBaseline = 'top';
+    ctxP.fillText('PHYSICAL BLOCK POOL  (16 blocks × 4 tokens)', padL, padT);
+    ctxP.fillText('STEP ' + stepCount.toString().padStart(3,' '), padL + gridW - 60, padT);
+
+    const gridT = padT + 22;
+    for (let i=0;i<POOL_SIZE;i++){
+      const r = Math.floor(i/cols), c = i%cols;
+      const x = padL + c*(cellW+gap);
+      const y = gridT + r*(cellH+gap);
+      const slot = state.pool[i];
+      if (slot){
+        ctxP.fillStyle = SEQ_COLORS[slot.seq];
+        ctxP.fillRect(x,y,cellW,cellH);
+        ctxP.fillStyle = 'rgba(250,248,243,0.95)';
+        ctxP.font = '500 14px "JetBrains Mono", monospace';
+        ctxP.textAlign = 'center'; ctxP.textBaseline = 'middle';
+        ctxP.fillText(slot.seq + ' #' + slot.idx, x+cellW/2, y+cellH/2 - 7);
+        ctxP.font = '10px "Instrument Sans", sans-serif';
+        ctxP.fillStyle = 'rgba(250,248,243,0.7)';
+        ctxP.fillText('phys ' + i, x+cellW/2, y+cellH/2 + 10);
+      } else {
+        ctxP.fillStyle = '#f5f2ea';
+        ctxP.fillRect(x,y,cellW,cellH);
+        ctxP.strokeStyle = 'rgba(26,25,24,0.28)';
+        ctxP.setLineDash([3,3]);
+        ctxP.strokeRect(x+0.5,y+0.5,cellW-1,cellH-1);
+        ctxP.setLineDash([]);
+        ctxP.fillStyle = '#6b6660';
+        ctxP.font = '10px "Instrument Sans", sans-serif';
+        ctxP.textAlign = 'center'; ctxP.textBaseline = 'middle';
+        ctxP.fillText('free', x+cellW/2, y+cellH/2 - 4);
+        ctxP.fillText('phys ' + i, x+cellW/2, y+cellH/2 + 10);
+      }
+    }
+
+    // Bottom: block tables for A/B/C
+    const tableT = gridT + rows*(cellH+gap) + 18;
+    ctxP.fillStyle = '#6b6660';
+    ctxP.font = '11px "Instrument Sans", sans-serif';
+    ctxP.textAlign = 'left'; ctxP.textBaseline = 'top';
+    ctxP.fillText('BLOCK TABLE PER SEQUENCE  (logical → physical)', padL, tableT);
+
+    const tBlockW = 36, tBlockH = 26, tGap = 4;
+    let yy = tableT + 22;
+    ['A','B','C'].forEach(name => {
+      const s = state.seqs[name];
+      // label column
+      ctxP.fillStyle = SEQ_COLORS[name];
+      ctxP.fillRect(padL, yy, 12, tBlockH);
+      ctxP.fillStyle = '#1a1918';
+      ctxP.font = '500 13px "Instrument Sans", sans-serif';
+      ctxP.textAlign = 'left'; ctxP.textBaseline = 'middle';
+      const aliveTxt = s.alive ? '' : ' (released)';
+      ctxP.fillText('seq ' + name + '  ·  ' + s.tokens + ' tok' + aliveTxt, padL + 20, yy + tBlockH/2);
+
+      // blocks
+      const startX = padL + 200;
+      s.blocks.forEach((p, idx) => {
+        const bx = startX + idx*(tBlockW+tGap);
+        ctxP.fillStyle = SEQ_COLORS[name];
+        ctxP.globalAlpha = 0.18;
+        ctxP.fillRect(bx, yy, tBlockW, tBlockH);
+        ctxP.globalAlpha = 1;
+        ctxP.strokeStyle = SEQ_COLORS[name];
+        ctxP.lineWidth = 1;
+        ctxP.strokeRect(bx+0.5, yy+0.5, tBlockW-1, tBlockH-1);
+        ctxP.fillStyle = '#1a1918';
+        ctxP.font = '11px "JetBrains Mono", monospace';
+        ctxP.textAlign = 'center'; ctxP.textBaseline = 'middle';
+        ctxP.fillText('→' + p, bx + tBlockW/2, yy + tBlockH/2);
+      });
+
+      yy += tBlockH + 10;
+    });
+  }
+
+  let playing = false;
+  let timer = null;
+  function tick(){
+    step();
+    drawPool();
+    // stop after 60 steps
+    if (stepCount > 60){ togglePlay(false); }
+  }
+  function togglePlay(force){
+    playing = (force === undefined) ? !playing : force;
+    if (playing){
+      bPlayLabel.textContent = 'Pause';
+      const interval = 600 / +rSpeed.value;
+      timer = setInterval(tick, interval);
+    } else {
+      bPlayLabel.textContent = 'Play';
+      if (timer){ clearInterval(timer); timer = null; }
+    }
+  }
+  bPlay.addEventListener('click', () => togglePlay());
+  bStep.addEventListener('click', () => { tick(); });
+  bReset.addEventListener('click', () => { togglePlay(false); resetState(); drawPool(); });
+  rSpeed.addEventListener('input', () => {
+    rSpeedV.textContent = rSpeed.value + '×';
+    if (playing){ togglePlay(false); togglePlay(true); }
+  });
+  resetState();
+  drawPool();
+
+  // ============= Section IV. share viz =============
+  const cShare = document.getElementById('c-share');
+  const ctxS = cShare.getContext('2d');
+  const rPrefix = document.getElementById('r-prefix');
+  const rFanout = document.getElementById('r-fanout');
+  const rPrefixV = document.getElementById('r-prefix-v');
+  const rFanoutV = document.getElementById('r-fanout-v');
+  const sNaiveMem = document.getElementById('s-naive-mem');
+  const sPagedMem = document.getElementById('s-paged-mem');
+  const sSave = document.getElementById('s-save');
+
+  function drawShare(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = cShare.clientWidth || 780, h = 280;
+    if (cShare.width !== w*dpr){ cShare.width=w*dpr; cShare.height=h*dpr; }
+    ctxS.setTransform(dpr,0,0,dpr,0,0);
+    ctxS.clearRect(0,0,w,h);
+
+    const prefix = +rPrefix.value;       // tokens
+    const fanout = +rFanout.value;       // n branches
+    const decode = 12;                   // tokens generated per branch
+    const BSZ = 4;
+    const prefBlocks = Math.ceil(prefix / BSZ);
+    const decBlocks  = Math.ceil(decode / BSZ);
+
+    rPrefixV.textContent = prefix;
+    rFanoutV.textContent = fanout;
+
+    const padL = 16, padT = 24;
+    const cellW = 28, cellH = 26, cellGap = 3;
+    const rowGap = 14;
+
+    // legend / title
+    ctxS.fillStyle = '#6b6660';
+    ctxS.font = '11px "Instrument Sans", sans-serif';
+    ctxS.textAlign = 'left'; ctxS.textBaseline = 'top';
+    ctxS.fillText('PREFIX (shared) → FORK → DECODE (per-branch)', padL, 6);
+
+    const branchH = cellH + rowGap;
+    const totalH = fanout * branchH + 16;
+    const startY = padT;
+
+    // shared prefix bar at top, spanning all branches visually
+    // We draw each branch as its own row but tint the prefix region with a sage band that visually unifies them.
+    const prefixW = prefBlocks * (cellW + cellGap);
+    if (prefBlocks > 0){
+      ctxS.fillStyle = 'rgba(138,154,107,0.10)';
+      ctxS.fillRect(padL - 4, startY - 6, prefixW + 8, fanout*branchH + 10);
+      ctxS.strokeStyle = 'rgba(138,154,107,0.5)';
+      ctxS.lineWidth = 1;
+      ctxS.setLineDash([4,3]);
+      ctxS.strokeRect(padL - 4 + 0.5, startY - 6 + 0.5, prefixW + 7, fanout*branchH + 9);
+      ctxS.setLineDash([]);
+      ctxS.fillStyle = '#3a5a3c';
+      ctxS.font = '500 10px "Instrument Sans", sans-serif';
+      ctxS.textAlign = 'left'; ctxS.textBaseline = 'top';
+      ctxS.fillText('SHARED  ('+prefBlocks+' blk)', padL, startY - 18);
+    }
+
+    // draw each branch
+    for (let b=0; b<fanout; b++){
+      const y = startY + b*branchH;
+      // prefix blocks: same color (sage), labeled with shared block id
+      for (let i=0;i<prefBlocks;i++){
+        const x = padL + i*(cellW+cellGap);
+        ctxS.fillStyle = '#8a9a6b';
+        ctxS.fillRect(x, y, cellW, cellH);
+        ctxS.fillStyle = 'rgba(250,248,243,0.95)';
+        ctxS.font = '10px "JetBrains Mono", monospace';
+        ctxS.textAlign = 'center'; ctxS.textBaseline = 'middle';
+        ctxS.fillText('p'+i, x + cellW/2, y + cellH/2);
+      }
+      // separator
+      const sepX = padL + prefBlocks*(cellW+cellGap) + 4;
+      if (prefBlocks > 0){
+        ctxS.strokeStyle = 'rgba(168,50,45,0.5)';
+        ctxS.setLineDash([2,2]);
+        ctxS.beginPath();
+        ctxS.moveTo(sepX - 2, y - 2);
+        ctxS.lineTo(sepX - 2, y + cellH + 2);
+        ctxS.stroke();
+        ctxS.setLineDash([]);
+      }
+      // decode blocks: per-branch color
+      const branchColor = ['#6b89a8','#a8322d','#b8823a','#1f3a5f','#8a9a6b','#6b6660'][b];
+      for (let i=0;i<decBlocks;i++){
+        const x = sepX + 6 + i*(cellW+cellGap);
+        ctxS.fillStyle = branchColor;
+        ctxS.fillRect(x, y, cellW, cellH);
+        ctxS.fillStyle = 'rgba(250,248,243,0.95)';
+        ctxS.font = '10px "JetBrains Mono", monospace';
+        ctxS.textAlign = 'center'; ctxS.textBaseline = 'middle';
+        ctxS.fillText('d'+i, x + cellW/2, y + cellH/2);
+      }
+      // branch label
+      ctxS.fillStyle = '#6b6660';
+      ctxS.font = '11px "Instrument Sans", sans-serif';
+      ctxS.textAlign = 'left'; ctxS.textBaseline = 'middle';
+      ctxS.fillText('branch '+(b+1), sepX + 6 + decBlocks*(cellW+cellGap) + 8, y + cellH/2);
+    }
+
+    // numbers
+    const naiveTok = (prefix + decode) * fanout;        // duplicate prefix
+    const pagedTok = prefix + decode * fanout;           // shared prefix
+    const save = naiveTok > 0 ? (1 - pagedTok/naiveTok)*100 : 0;
+    sNaiveMem.textContent = naiveTok + ' tok';
+    sPagedMem.textContent = pagedTok + ' tok';
+    sSave.textContent = save.toFixed(1) + '%';
+  }
+  rPrefix.addEventListener('input', drawShare);
+  rFanout.addEventListener('input', drawShare);
+  drawShare();
+
+})();
+</script>
+</body>
+</html>

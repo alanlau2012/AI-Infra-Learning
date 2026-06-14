@@ -46,12 +46,9 @@ export interface SeedTopic {
   key_points: string[];
   real_world_connection: string;
   body_md?: string;
+  interactive_demo?: TopicInteractiveDemo;
   /** 该 Topic 引用的权威来源清单。仅展示，不影响业务逻辑。 */
   sources?: TopicSource[];
-  /** 可选 gate 配置：含 hardwarePresets / scenarios / attemptConfig；
-   * 配置存在时该 Topic 进入"判断力检验"路径。renderer 拿到的是 TopicGate
-   * （不含 correctAnswer / explanation 字段）。 */
-  gate?: SeedTopicGate;
 }
 
 export interface SeedLearningPath {
@@ -91,8 +88,32 @@ export interface TopicDetail extends TopicSummary {
   keyPoints: string[];
   prerequisites: TopicSummary[];
   bodyMd: string | null;
+  interactiveDemo: TopicInteractiveDemo | null;
   /** 该 Topic 引用的权威来源清单（透传自 seed），无来源时为空数组。 */
   sources: TopicSource[];
+}
+
+export type TopicInteractiveDemoKind =
+  | 'stack_compare'
+  | 'kv_paged_attention'
+  | 'batching_prefill'
+  | 'ascend_operator'
+  | 'distributed_inference';
+
+export type TopicInteractiveMetric = 'TTFT' | 'TPOT' | 'throughput' | 'kvMemory' | 'bandwidth';
+
+export interface TopicInteractiveDemoStep {
+  id: string;
+  label: string;
+  explanation: string;
+}
+
+export interface TopicInteractiveDemo {
+  kind: TopicInteractiveDemoKind;
+  title: string;
+  summary: string;
+  metrics: TopicInteractiveMetric[];
+  steps: TopicInteractiveDemoStep[];
 }
 
 export interface RoadmapEdge {
@@ -122,83 +143,4 @@ export interface SeedReloadEvent {
   ok: boolean;
   reloadedAt: number;
   error?: string;
-}
-
-export type GateStatus = 'not_attempted' | 'passed' | 'failed';
-
-export type BoundAnswer = 'compute' | 'memory';
-
-export interface HardwarePreset {
-  id: string;
-  name: string;
-  peakTflops: number;
-  bandwidthTBs: number;
-  color: string;
-  lineStyle?: 'solid' | 'dashed';
-  isDefault?: boolean;
-  isComparisonDefault?: boolean;
-}
-
-export interface ExploreScenario {
-  id: string;
-  name: string;
-  ai: number;
-  category: 'prefill' | 'decode' | 'mixed';
-  tags: string[];
-}
-
-/** Renderer-facing question. The expected `ai`, `correctAnswer`, and
- * `explanation` are kept in main; only revealed via `checkSingleAnswer`. */
-export interface GateQuestion {
-  id: string;
-  name: string;
-  hardwareId: string;
-  category: 'prefill' | 'decode' | 'mixed';
-  tags: string[];
-}
-
-export interface GateAttemptConfig {
-  questionsPerAttempt: number;
-  passingThreshold: number;
-}
-
-export interface SingleAnswerResult {
-  questionId: string;
-  correct: boolean;
-  correctAnswer: BoundAnswer;
-  explanation: string;
-  operatingPoint: { ai: number; perfTflops: number };
-}
-
-export interface GateAttemptResult {
-  passed: boolean;
-  correctCount: number;
-  total: number;
-}
-
-export interface TopicGate {
-  componentId: 'roofline-chart';
-  hardwarePresets: HardwarePreset[];
-  exploreScenarios: ExploreScenario[];
-  attemptConfig: GateAttemptConfig;
-  status: GateStatus;
-  lastAttempt: { correctCount: number; total: number; completedAt: string } | null;
-  attempts: number;
-}
-
-/** Seed-side scenario record. Includes the answer key, never sent to renderer
- * via `getTopicGate`. */
-export interface SeedGateScenario extends ExploreScenario {
-  correctAnswer: BoundAnswer;
-  explanation: string;
-}
-
-export interface SeedTopicGate {
-  componentId: 'roofline-chart';
-  hardwarePresets: HardwarePreset[];
-  scenarios: SeedGateScenario[];
-  attemptConfig: GateAttemptConfig;
-  /** Optional explicit binding of scenario → hardware for gate questions.
-   * If omitted, falls back to the default hardware. */
-  questionHardwareBindings?: Record<string, string>;
 }

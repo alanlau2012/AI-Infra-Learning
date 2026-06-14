@@ -13,6 +13,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { useMemo } from 'react';
 import type { SourceConfidence, StageWithTopics, StudyStatus, TopicDetail } from '../../shared/types';
 import { extractMarkdownHeadings } from '../lib/markdown';
+import InteractiveLesson from './InteractiveLesson';
 import MarkdownContent from './MarkdownContent';
 
 const statusLabels: Record<StudyStatus, string> = {
@@ -29,7 +30,7 @@ const statusIcons: Record<StudyStatus, ReactElement> = {
 
 const confidenceLabels: Record<SourceConfidence, string> = {
   high: '官方来源',
-  medium: '社区/二手',
+  medium: '参考来源',
   low: '示例假设'
 };
 
@@ -38,10 +39,9 @@ interface Props {
   stage: StageWithTopics | null;
   onUpdateStatus: (status: StudyStatus) => void;
   onSelectTopic: (topicId: string) => void;
-  onGateCompleted?: () => void;
 }
 
-export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelectTopic, onGateCompleted }: Props) {
+export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelectTopic }: Props) {
   const headings = useMemo(
     () => (topic.bodyMd ? extractMarkdownHeadings(topic.bodyMd).filter((heading) => heading.level >= 2) : []),
     [topic.bodyMd]
@@ -110,9 +110,11 @@ export default function TopicDetailView({ topic, stage, onUpdateStatus, onSelect
           </div>
         </section>
 
+        {topic.interactiveDemo ? <InteractiveLesson demo={topic.interactiveDemo} /> : null}
+
         <section className="detail-section detail-body-section" aria-label="详细内容">
           {topic.bodyMd ? (
-            <MarkdownContent markdown={topic.bodyMd} topicId={topic.id} onGateCompleted={onGateCompleted} />
+            <MarkdownContent markdown={topic.bodyMd} />
           ) : (
             <p className="body-fallback">正文内容待补充。</p>
           )}
@@ -226,7 +228,7 @@ function difficultyLabel(difficulty: number) {
 function buildCheckpoints(topic: TopicDetail) {
   const checkpoints = topic.keyPoints.slice(0, 3).map((point) => `能否解释：${point}`);
   if (topic.realWorldConnection) {
-    checkpoints.push('能否把本节结论映射到 GTS 生产场景？');
+    checkpoints.push('能否把本节结论映射到企业 Agent 平台场景？');
   }
 
   return checkpoints.length ? checkpoints : ['能否说清本节的核心判断？'];

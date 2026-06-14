@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>KV Cache · 推理为什么会被它撑爆</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg:#faf8f3;
+    --bg-2:#f3efe5;
+    --ink:#1a1918;
+    --ink-2:#3b3733;
+    --ink-3:#7a736b;
+    --rule:rgba(26,25,24,0.14);
+    --rule-soft:rgba(26,25,24,0.07);
+    --accent:#1f3a5f;        /* prussian blue */
+    --accent-soft:#6b89a8;
+    --warn:#a8322d;          /* oxblood */
+    --warn-soft:#d2b6a4;
+    --sage:#6c7d5c;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
+  body{
+    font-family:'Source Serif 4', Georgia, serif;
+    font-size:17px;
+    line-height:1.72;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .frame{max-width:780px;margin:0 auto;padding:72px 28px 120px}
+  .label{font-family:'Instrument Sans',sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-3)}
+  .mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.01em}
+
+  /* -------- masthead -------- */
+  .masthead{border-top:2px solid var(--ink);padding-top:18px;margin-bottom:48px}
+  .masthead .kicker{display:flex;justify-content:space-between;align-items:baseline}
+  .masthead h1{
+    font-family:'Source Serif 4',serif;
+    font-weight:600;
+    font-size:46px;
+    line-height:1.08;
+    letter-spacing:-0.01em;
+    margin:18px 0 14px;
+  }
+  .masthead .dek{
+    font-family:'Source Serif 4',serif;
+    font-style:italic;
+    font-size:19px;
+    color:var(--ink-2);
+    max-width:640px;
+    margin:0;
+  }
+  .masthead .byline{margin-top:24px;color:var(--ink-3);font-family:'Instrument Sans',sans-serif;font-size:13px}
+
+  /* -------- TOC -------- */
+  nav.toc{
+    margin:46px 0 56px;
+    padding:18px 0;
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+  }
+  nav.toc ol{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 28px}
+  nav.toc li{font-family:'Instrument Sans',sans-serif;font-size:13.5px;color:var(--ink-2)}
+  nav.toc li .num{color:var(--ink-3);margin-right:10px;font-variant-numeric:tabular-nums}
+  nav.toc a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
+  nav.toc a:hover{border-bottom-color:var(--accent)}
+
+  /* -------- sections -------- */
+  section{margin:64px 0 0}
+  section .sec-head{
+    display:flex;align-items:baseline;gap:14px;
+    border-top:1px solid var(--rule);
+    padding-top:22px;
+    margin-bottom:14px;
+  }
+  section .sec-head .roman{font-family:'Instrument Sans',sans-serif;font-size:12px;letter-spacing:0.2em;color:var(--ink-3)}
+  section h2{
+    font-family:'Source Serif 4',serif;
+    font-weight:600;
+    font-size:26px;
+    line-height:1.2;
+    margin:0;
+    letter-spacing:-0.005em;
+  }
+  section .sec-dek{font-style:italic;color:var(--ink-2);margin:6px 0 22px;font-size:16px}
+
+  p{margin:0 0 14px}
+  p + p{margin-top:0}
+  em.kw{font-style:normal;border-bottom:1px dotted var(--ink-3);padding-bottom:1px}
+  code, .mono{font-family:'JetBrains Mono',monospace;font-size:0.92em;background:var(--bg-2);padding:1px 5px;border-radius:2px;color:var(--ink)}
+
+  /* -------- insight callout -------- */
+  .insight{
+    border-left:2px solid var(--accent);
+    padding:6px 0 6px 18px;
+    margin:24px 0;
+    color:var(--ink-2);
+    font-style:italic;
+    font-size:16.5px;
+    line-height:1.65;
+  }
+  .insight strong{font-style:normal;color:var(--ink);font-weight:600}
+  .insight.warn{border-color:var(--warn)}
+
+  /* -------- figure caption -------- */
+  .caption{
+    font-family:'Instrument Sans',sans-serif;
+    font-size:12.5px;
+    color:var(--ink-3);
+    margin-top:8px;
+    letter-spacing:0.01em;
+  }
+  .caption b{color:var(--ink-2);font-weight:600;letter-spacing:0.05em;text-transform:uppercase;font-size:11px;margin-right:6px}
+
+  /* -------- formula block -------- */
+  .formula{
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    background:var(--bg-2);
+    border-left:2px solid var(--ink-3);
+    padding:14px 18px;
+    margin:18px 0;
+    line-height:1.7;
+    color:var(--ink);
+    overflow-x:auto;
+  }
+  .formula .v{color:var(--accent)}
+  .formula .c{color:var(--warn)}
+  .formula .lbl{color:var(--ink-3)}
+
+  /* -------- interactive panel -------- */
+  .panel{
+    margin:30px 0 6px;
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+    padding:24px 0;
+  }
+  .panel .grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  @media (max-width:720px){.panel .grid{grid-template-columns:1fr}}
+
+  .ctl{margin:14px 0}
+  .ctl .row{display:flex;justify-content:space-between;align-items:baseline;font-family:'Instrument Sans',sans-serif;font-size:13px;color:var(--ink-2)}
+  .ctl .row .v{font-family:'JetBrains Mono',monospace;color:var(--ink);font-size:13px}
+  .ctl input[type=range]{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:2px;background:var(--rule);margin:10px 0 0;
+    outline:none;border-radius:0;
+  }
+  .ctl input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:14px;height:14px;background:var(--accent);border-radius:50%;
+    cursor:pointer;border:0;
+    transition:transform .15s;
+  }
+  .ctl input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+  .ctl input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;border:0;cursor:pointer}
+
+  .ctl select{
+    width:100%;
+    font-family:'Instrument Sans',sans-serif;
+    font-size:13.5px;
+    background:var(--bg);
+    color:var(--ink);
+    border:0;
+    border-bottom:1px solid var(--rule);
+    padding:6px 2px;
+    appearance:none;
+    cursor:pointer;
+  }
+  .ctl select:focus{outline:none;border-bottom-color:var(--accent)}
+
+  .readout{
+    font-family:'JetBrains Mono',monospace;
+    background:var(--bg-2);
+    padding:18px 20px;
+    border-left:2px solid var(--accent);
+  }
+  .readout .line{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-2);margin:4px 0}
+  .readout .line .v{color:var(--ink);font-weight:500}
+  .readout .big{font-family:'Source Serif 4',serif;font-size:28px;color:var(--ink);font-weight:600;margin:8px 0 4px;letter-spacing:-0.01em}
+  .readout .big .unit{font-family:'Instrument Sans',sans-serif;font-size:13px;color:var(--ink-3);margin-left:4px;letter-spacing:0.05em;text-transform:uppercase}
+
+  /* memory-tank canvas */
+  canvas{display:block;width:100%;height:auto}
+  .tank-wrap{margin:16px 0 0}
+  .tank-legend{display:flex;gap:18px;margin-top:8px;font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--ink-2)}
+  .tank-legend .sw{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:middle}
+
+  /* table */
+  table.tab{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px}
+  table.tab th, table.tab td{
+    text-align:left;padding:9px 8px;border-bottom:1px solid var(--rule-soft);
+    font-family:'Source Serif 4',serif;
+  }
+  table.tab th{
+    font-family:'Instrument Sans',sans-serif;
+    font-size:11px;text-transform:uppercase;letter-spacing:0.1em;
+    color:var(--ink-3);font-weight:500;
+    border-bottom:1px solid var(--rule);
+  }
+  table.tab td.num{font-family:'JetBrains Mono',monospace;font-size:13.5px}
+
+  /* footer pointer */
+  .pointer{
+    margin:72px 0 0;
+    padding-top:30px;
+    border-top:2px solid var(--ink);
+    font-family:'Source Serif 4',serif;
+    font-style:italic;
+    color:var(--ink-2);
+    font-size:17px;
+  }
+  .pointer .lead{font-style:normal;font-family:'Instrument Sans',sans-serif;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:10px}
+
+  /* utility */
+  .small{font-size:13.5px;color:var(--ink-2)}
+  hr.rule{border:0;border-top:1px solid var(--rule);margin:28px 0}
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ─────────── Masthead ─────────── -->
+  <header class="masthead">
+    <div class="kicker">
+      <span class="label">AI Infra · Daily Lesson 04</span>
+      <span class="label">2026 · 05 · 01</span>
+    </div>
+    <h1>KV Cache</h1>
+    <p class="dek">把每一个生成过的 token 都"记"下来——是 LLM 推理能跑动的前提，也是它最先撞到内存墙的原因。</p>
+    <div class="byline">大约 5 分钟 · 含交互 · 接续昨日 <span class="mono">Prefill vs. Decode</span></div>
+  </header>
+
+  <!-- ─────────── TOC ─────────── -->
+  <nav class="toc" aria-label="目录">
+    <ol>
+      <li><span class="num">I</span><a href="#s1">缓存的诞生</a></li>
+      <li><span class="num">II</span><a href="#s2">一个 token 到底存什么</a></li>
+      <li><span class="num">III</span><a href="#s3">内存公式与现实尺度</a></li>
+      <li><span class="num">IV</span><a href="#s4">撞墙的那一刻</a></li>
+      <li><span class="num">V</span><a href="#s5">通往下一道门</a></li>
+    </ol>
+  </nav>
+
+  <!-- ─────────── §I ─────────── -->
+  <section id="s1">
+    <div class="sec-head"><span class="roman">I</span><h2>缓存的诞生</h2></div>
+    <p class="sec-dek">没有 KV cache 的 decode，是一种 O(n²) 的浪费。</p>
+
+    <p>自回归生成的每一步，模型都需要让当前 token 与<em class="kw">所有历史 token</em>做 attention：把当前 query 与历史 key 做点积，再用 softmax 加权聚合历史 value。</p>
+
+    <p>朴素地实现，每生成一个新 token，就要重新把过去 <span class="mono">n</span> 个 token 重新跑一遍 K、V 投影——第 1000 个 token 要重算 1000 次 K/V，第 2000 个要重算 2000 次。整段生成的累计计算量是 <span class="mono">O(n²)</span>，而其中 <span class="mono">O(n²)−O(n)</span> 都是<em class="kw">冗余</em>：那些历史 K、V 的值并不会因为后来又生成了一个 token 而改变。</p>
+
+    <p>KV cache 的全部点子就在这一句话里：<strong>K 和 V 算一次，就把它存住，后续只往里追加</strong>。原本平方级的累计开销，被压成线性的"读 + 加一行"。decode 阶段的 attention 由此从一个计算密集的瀑布，变成一段在显存里来回搬数据的窄管子——这也正是它会成为<em class="kw">memory-bound</em>的根因。</p>
+
+    <div class="insight">
+      <strong>核心抽象：</strong>KV cache 是一个 append-only 的环境状态。每一步 decode 只贡献一行新的 K/V，attention 的另一侧——过去的所有 K、V——是被读出来的，不是被算出来的。
+    </div>
+  </section>
+
+  <!-- ─────────── §II ─────────── -->
+  <section id="s2">
+    <div class="sec-head"><span class="roman">II</span><h2>一个 token 到底存什么</h2></div>
+    <p class="sec-dek">不是 hidden state，不是 logits——是每一层 attention 的 K 和 V。</p>
+
+    <p>常见的误解是把 KV cache 想成"模型的隐藏状态"。它不是。每一层 transformer 内部都有自己独立的 attention，因此 KV cache 也是<em class="kw">每层一份</em>：一个 80 层的模型，每个 token 在缓存里其实占了 80 套 K/V。</p>
+
+    <p>对于一个 token，在<em class="kw">单层</em>里被存下的形状是：</p>
+
+    <div class="formula">
+      K · shape = [<span class="v">n_kv_heads</span>, <span class="v">head_dim</span>]<br/>
+      V · shape = [<span class="v">n_kv_heads</span>, <span class="v">head_dim</span>]<br/>
+      <span class="lbl"># 数据类型一般是 fp16 / bf16 (2 字节) 或 fp8 (1 字节)</span>
+    </div>
+
+    <p>因此每个 token 在<em class="kw">整个模型</em>里占用的 KV 字节数为：</p>
+
+    <div class="formula">
+      bytes_per_token = <span class="c">2</span> × <span class="v">layers</span> × <span class="v">n_kv_heads</span> × <span class="v">head_dim</span> × <span class="v">dtype_bytes</span>
+      <br/><span class="lbl"># 系数 2 来自 K 和 V 各一份</span>
+    </div>
+
+    <p>把所有 token、所有并行 sequence 一起算，整张卡上的 KV cache 占用就是：</p>
+
+    <div class="formula">
+      KV_total = bytes_per_token × <span class="v">seq_len</span> × <span class="v">batch_size</span>
+    </div>
+
+    <div class="insight">
+      <strong>请记住这条线性关系。</strong> KV cache 与 <span class="mono">seq_len × batch</span> 严格成正比——既不会因为 prompt 共享前缀而减少（除非你显式做 prefix sharing），也不会因为 attention 是 sparse 而便宜。它就是一块越长越胖的连续 buffer。
+    </div>
+  </section>
+
+  <!-- ─────────── §III ─────────── -->
+  <section id="s3">
+    <div class="sec-head"><span class="roman">III</span><h2>内存公式与现实尺度</h2></div>
+    <p class="sec-dek">把数字代进去，看一张 H100 能撑多久。</p>
+
+    <p>公式抽象，但代入真实模型的形状之后，KV cache 的体量会非常具象。下面这个面板里你可以切换不同的模型 / 注意力结构，并拖动 batch 与 sequence length，观察 KV cache 在 80 GB H100 上的占比变化。</p>
+
+    <div class="panel">
+      <div class="grid">
+        <div>
+          <div class="ctl">
+            <div class="row"><span>模型预设</span><span class="v" id="presetName">Llama-3-70B</span></div>
+            <select id="preset">
+              <option value="llama3-70b">Llama-3-70B  ·  GQA · 80L · 8 KV heads · 128 dim</option>
+              <option value="llama3-8b">Llama-3-8B  ·  GQA · 32L · 8 KV heads · 128 dim</option>
+              <option value="qwen25-72b">Qwen2.5-72B  ·  GQA · 80L · 8 KV heads · 128 dim</option>
+              <option value="mha-70b">假设：70B + 纯 MHA  ·  80L · 64 KV heads · 128 dim</option>
+            </select>
+          </div>
+
+          <div class="ctl">
+            <div class="row"><span>数据类型</span><span class="v" id="dtypeName">FP16 · 2 B</span></div>
+            <select id="dtype">
+              <option value="2">FP16 / BF16  ·  2 字节</option>
+              <option value="1">FP8 / INT8  ·  1 字节</option>
+              <option value="0.5">INT4 (实验)  ·  0.5 字节</option>
+            </select>
+          </div>
+
+          <div class="ctl">
+            <div class="row"><span>Batch size</span><span class="v" id="batchVal">8</span></div>
+            <input id="batch" type="range" min="1" max="32" value="8" />
+          </div>
+
+          <div class="ctl">
+            <div class="row"><span>Seq length</span><span class="v" id="seqVal">8 192</span></div>
+            <input id="seq" type="range" min="1024" max="131072" step="512" value="8192" />
+          </div>
+        </div>
+
+        <div>
+          <div class="readout">
+            <div class="line"><span>每 token KV 字节</span><span class="v" id="perTok">320 KiB</span></div>
+            <div class="line"><span>单序列 (seq_len)</span><span class="v" id="perSeq">2.50 GiB</span></div>
+            <div class="big"><span id="totalGB">20.00</span><span class="unit">GiB · 总 KV cache</span></div>
+            <div class="line"><span>占 H100 80 GB</span><span class="v" id="pct">25.0 %</span></div>
+            <div class="line"><span>权重 (近似)</span><span class="v" id="weightsGB">140.0 GiB · fp16</span></div>
+          </div>
+
+          <div class="tank-wrap">
+            <canvas id="tank" width="640" height="180"></canvas>
+            <div class="tank-legend">
+              <span><span class="sw" style="background:#3b3733"></span>模型权重</span>
+              <span><span class="sw" style="background:#1f3a5f"></span>KV cache</span>
+              <span><span class="sw" style="background:#a8322d"></span>溢出 / OOM</span>
+              <span><span class="sw" style="background:#e8e2d3;border:1px solid var(--rule)"></span>剩余 80 GB</span>
+            </div>
+            <p class="caption"><b>Fig.1</b> 一张 80 GB H100 的显存占用：左侧是常驻的模型权重，右侧是随并发与上下文长度生长的 KV cache。注意权重通常需要多卡分片（TP / PP）才能装下；这里仅作单卡视觉对照。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insight warn">
+      <strong>试试两件事：</strong>把模型切到"假设 · 70B + 纯 MHA"——同样的 batch 和 seq，KV cache 立刻膨胀 8 倍——这就是 GQA 节省下来的那部分。再把 dtype 切到 FP8——立刻砍半，这就是 KV cache quantization 的吸引力所在。
+    </div>
+  </section>
+
+  <!-- ─────────── §IV ─────────── -->
+  <section id="s4">
+    <div class="sec-head"><span class="roman">IV</span><h2>撞墙的那一刻</h2></div>
+    <p class="sec-dek">线性增长 + 多并发，会把任何一张卡逼到墙角。</p>
+
+    <p>"线性增长"听起来温和，但只要你把推理服务真正跑起来，就会发现 KV cache 是<em class="kw">第一个</em>触发限制的资源——往往比模型权重还要早成为瓶颈。</p>
+
+    <p>下面这张表用 Llama-3-70B（GQA · FP16）做反推：单序列 KV cache 大约 <span class="mono">320 KiB / token</span>，于是——</p>
+
+    <table class="tab">
+      <thead>
+        <tr><th>场景</th><th>seq_len</th><th>batch</th><th>KV cache</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>聊天 · 短上下文</td><td class="num">2 048</td><td class="num">16</td><td class="num">10 GiB</td><td>典型 chat 服务的轻负载</td></tr>
+        <tr><td>RAG · 中等上下文</td><td class="num">8 192</td><td class="num">8</td><td class="num">20 GiB</td><td>已经吃掉单卡 1/4 的预算</td></tr>
+        <tr><td>长文档总结</td><td class="num">32 768</td><td class="num">4</td><td class="num">40 GiB</td><td>逼近一半显存</td></tr>
+        <tr><td>code / agent · 长链路</td><td class="num">128 000</td><td class="num">2</td><td class="num">78 GiB</td><td>几乎榨干 H100</td></tr>
+        <tr><td>百万 token 上下文</td><td class="num">1 000 000</td><td class="num">1</td><td class="num">305 GiB</td><td>单卡放不下，必须分布式 KV</td></tr>
+      </tbody>
+    </table>
+
+    <p>真正的痛点不是任何一行——而是<em class="kw">这些场景同时存在</em>。线上请求的 seq_len 分布是长尾的：99% 的请求很短，1% 的请求拖着十几万 token 的尾巴，但那 1% 会瞬间吃光本来留给其他 16 路并发的预算，让 batch 被迫缩小，TPS 塌方。</p>
+
+    <p>这正是 vLLM 在 2023 年所做的关键观察：传统实现把每条 sequence 的 KV cache 一次性预留成<em class="kw">最大可能长度</em>的连续 buffer，造成大量碎片与浪费。<strong>PagedAttention</strong> 把 KV cache 切成固定大小的 block（一般 16 个 token / block），用一张<em class="kw">block table</em>把逻辑序列映射到物理 block——KV cache 从此可以像虚拟内存一样被精细地分配、共享与回收。</p>
+
+    <div class="insight">
+      <strong>关键直觉：</strong>当一种资源会随用户行为长尾增长时，把它切块、加间接表、做按需分配——几乎总是值得的。KV cache 与操作系统页表之间的相似不是巧合。
+    </div>
+  </section>
+
+  <!-- ─────────── §V ─────────── -->
+  <section id="s5">
+    <div class="sec-head"><span class="roman">V</span><h2>通往下一道门</h2></div>
+    <p class="sec-dek">围绕 KV cache 长出来的那一整代优化。</p>
+
+    <p>一旦把 KV cache 看成 LLM 推理的中心资源，过去两年大半的推理优化就能被串成一张图：</p>
+
+    <p>—— <strong>结构上</strong>，<span class="mono">MQA</span> / <span class="mono">GQA</span> / <span class="mono">MLA</span> 通过减少 K/V 的头数（或对其做投影压缩），直接砍掉 <span class="mono">bytes_per_token</span> 中的 <span class="mono">n_kv_heads</span> 项。</p>
+
+    <p>—— <strong>数值上</strong>，KV cache quantization（FP8 / INT8 / INT4）把 <span class="mono">dtype_bytes</span> 砍半甚至 1/4，是 KV 显存最直接的杠杆。</p>
+
+    <p>—— <strong>分配上</strong>，PagedAttention 把"为最差情况预留"换成"按页按需分配"，让多路 sequence 共用一个池子，吞吐立刻起飞。</p>
+
+    <p>—— <strong>调度上</strong>，continuous batching、prefix caching 都在说同一件事：尽量让相似的 KV 共享、让不同长度的请求在同一个 step 里共存。</p>
+
+    <p>—— <strong>架构上</strong>，更激进的做法（attention sink、StreamingLLM、KV eviction、cross-layer KV sharing）在追问一个更尖锐的问题：是不是所有历史 token 的 KV 都值得保留？哪些可以丢、哪些可以跨层共享？</p>
+
+    <div class="insight">
+      <strong>把它放回脑中的位置：</strong>当你听到任何一项推理优化，先问一句——它在 <span class="mono">2 × layers × n_kv_heads × head_dim × seq_len × batch × dtype</span> 这条公式里减小了哪一项？答得出来，你就抓住了它的本质。
+    </div>
+  </section>
+
+  <!-- ─────────── what to remember ─────────── -->
+  <section>
+    <div class="sec-head"><span class="roman">¶</span><h2>带走这五件事</h2></div>
+
+    <p>KV cache 把 decode 的注意力计算从 <span class="mono">O(n²)</span> 压到 <span class="mono">O(n)</span>，但代价是把"算"换成了"存"。</p>
+    <p>它是<em class="kw">每层、每 token、每个 KV head</em>都要存一份的 append-only buffer，与 hidden state 是两回事。</p>
+    <p>规模公式只有一条，背下来：<span class="mono">2 × layers × n_kv_heads × head_dim × seq_len × batch × dtype</span>。</p>
+    <p>在生产系统里，KV cache 通常比模型权重<em class="kw">更早</em>成为瓶颈，因为它会随并发和上下文长度同时膨胀。</p>
+    <p>近两年大部分 inference engine 优化（GQA、PagedAttention、KV quant、prefix cache、continuous batching）本质上都是在那条公式里做减法、或重塑它的内存分配方式。</p>
+  </section>
+
+  <!-- ─────────── pointer ─────────── -->
+  <p class="pointer">
+    <span class="lead">明天的门</span>
+    KV cache 既然是块"会涨的内存"，就值得有自己的一套<em>分配器</em>。下一课：PagedAttention——把虚拟内存的思路引进 attention，是怎么做到的，又付出了什么代价。
+  </p>
+
+</div>
+
+<script>
+(function(){
+  const presets = {
+    'llama3-70b':    { name:'Llama-3-70B',     layers:80, kv:8,  head:128, weights:140 },
+    'llama3-8b':     { name:'Llama-3-8B',      layers:32, kv:8,  head:128, weights:16  },
+    'qwen25-72b':    { name:'Qwen2.5-72B',     layers:80, kv:8,  head:128, weights:144 },
+    'mha-70b':       { name:'70B · 纯 MHA',    layers:80, kv:64, head:128, weights:140 },
+  };
+
+  const $ = id => document.getElementById(id);
+  const presetSel = $('preset'), dtypeSel = $('dtype'),
+        batchEl = $('batch'), seqEl = $('seq');
+
+  const fmtBytes = (b) => {
+    if (b < 1024) return b.toFixed(0) + ' B';
+    if (b < 1024**2) return (b/1024).toFixed(1) + ' KiB';
+    if (b < 1024**3) return (b/1024**2).toFixed(2) + ' MiB';
+    return (b/1024**3).toFixed(2) + ' GiB';
+  };
+  const fmtNum = n => n.toLocaleString('en-US');
+
+  const tank = $('tank');
+  const ctx = tank.getContext('2d');
+  // hi-dpi
+  function fitCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = tank.clientWidth || 640;
+    const cssH = 180;
+    tank.width = cssW * dpr;
+    tank.height = cssH * dpr;
+    tank.style.height = cssH + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function drawTank(weightsGB, kvGB){
+    fitCanvas();
+    const w = tank.clientWidth, h = 180;
+    ctx.clearRect(0,0,w,h);
+
+    // frame
+    const padX = 12, padY = 28, barH = 56;
+    const innerW = w - padX*2;
+    const y = padY + 18;
+
+    // axis label
+    ctx.fillStyle = '#7a736b';
+    ctx.font = "11px 'Instrument Sans', sans-serif";
+    ctx.fillText('单卡 H100 · 80 GiB HBM', padX, padY);
+    ctx.textAlign = 'right';
+    ctx.fillText('0', padX+0, y+barH+16);
+    ctx.fillText('20', padX + innerW*0.25, y+barH+16);
+    ctx.fillText('40', padX + innerW*0.5, y+barH+16);
+    ctx.fillText('60', padX + innerW*0.75, y+barH+16);
+    ctx.fillText('80 GiB', padX + innerW, y+barH+16);
+    ctx.textAlign = 'left';
+
+    const HBM = 80;
+    // background
+    ctx.fillStyle = '#e8e2d3';
+    ctx.fillRect(padX, y, innerW, barH);
+
+    // weights (clamp to HBM for display so the bar still tells a story)
+    const wDisp = Math.min(weightsGB, HBM);
+    const wW = (wDisp / HBM) * innerW;
+    ctx.fillStyle = '#3b3733';
+    ctx.fillRect(padX, y, wW, barH);
+
+    // kv cache stacked on top of weights, up to 80 GB
+    const remaining = Math.max(HBM - wDisp, 0);
+    const kvDisp = Math.min(kvGB, remaining);
+    const kvW = (kvDisp / HBM) * innerW;
+    ctx.fillStyle = '#1f3a5f';
+    ctx.fillRect(padX + wW, y, kvW, barH);
+
+    // overflow segment (red hatch)
+    const usedGB = wDisp + kvDisp;
+    const overflowGB = Math.max((weightsGB + kvGB) - HBM, 0);
+    if (overflowGB > 0){
+      // red bar overlay drawn after the 80 GiB cap, on a second tier line
+      ctx.fillStyle = '#a8322d';
+      // show overflow as red bar to right of HBM cap
+      const oW = Math.min((overflowGB / HBM) * innerW, innerW * 0.6);
+      // small offset so it visually escapes the tank
+      ctx.fillRect(padX + innerW + 4, y + 6, oW, barH - 12);
+      ctx.fillStyle = '#a8322d';
+      ctx.font = "11px 'Instrument Sans', sans-serif";
+      ctx.fillText('溢出 ' + overflowGB.toFixed(1) + ' GiB → OOM',
+                   padX + innerW + 4, y - 4);
+    }
+
+    // separator line at HBM cap
+    ctx.strokeStyle = 'rgba(26,25,24,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padX + innerW + 0.5, y - 6);
+    ctx.lineTo(padX + innerW + 0.5, y + barH + 6);
+    ctx.stroke();
+
+    // labels inside bars
+    ctx.font = "12px 'JetBrains Mono', monospace";
+    if (wW > 80){
+      ctx.fillStyle = '#faf8f3';
+      ctx.fillText('权重 ' + weightsGB.toFixed(0) + ' GiB', padX + 8, y + barH/2 + 4);
+    }
+    if (kvW > 60){
+      ctx.fillStyle = '#faf8f3';
+      ctx.fillText('KV ' + kvGB.toFixed(1) + ' GiB', padX + wW + 8, y + barH/2 + 4);
+    }
+  }
+
+  function recompute(){
+    const p = presets[presetSel.value];
+    const dtype = parseFloat(dtypeSel.value);
+    const batch = parseInt(batchEl.value, 10);
+    const seq = parseInt(seqEl.value, 10);
+
+    // bytes
+    const perTok = 2 * p.layers * p.kv * p.head * dtype;          // bytes
+    const perSeq = perTok * seq;                                   // bytes
+    const total  = perSeq * batch;                                 // bytes
+    const totalGB = total / (1024**3);
+
+    $('presetName').textContent = p.name;
+    $('dtypeName').textContent =
+      (dtype === 2 ? 'FP16 · 2 B' : dtype === 1 ? 'FP8 · 1 B' : 'INT4 · 0.5 B');
+    $('batchVal').textContent = batch;
+    $('seqVal').textContent = fmtNum(seq);
+    $('perTok').textContent = fmtBytes(perTok);
+    $('perSeq').textContent = fmtBytes(perSeq);
+    $('totalGB').textContent = totalGB.toFixed(2);
+
+    const pct = (totalGB / 80) * 100;
+    const pctEl = $('pct');
+    pctEl.textContent = pct.toFixed(1) + ' %';
+    pctEl.style.color = pct > 100 ? '#a8322d' : (pct > 60 ? '#b8823a' : 'var(--ink)');
+
+    // weights line — note: 70B fp16 actually doesn't fit on a single H100, this is illustrative
+    const wGB = p.weights * (dtype / 2); // crude scaling: fp8 weights ~ half
+    $('weightsGB').textContent = wGB.toFixed(0) + ' GiB · ' +
+      (dtype === 2 ? 'fp16' : dtype === 1 ? 'fp8' : 'int4');
+
+    drawTank(wGB, totalGB);
+  }
+
+  ['change','input'].forEach(ev => {
+    presetSel.addEventListener(ev, recompute);
+    dtypeSel.addEventListener(ev, recompute);
+    batchEl.addEventListener(ev, recompute);
+    seqEl.addEventListener(ev, recompute);
+  });
+  window.addEventListener('resize', recompute);
+
+  // initial paint
+  recompute();
+})();
+</script>
+</body>
+</html>

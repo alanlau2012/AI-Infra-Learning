@@ -38,6 +38,10 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9333');
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -90,7 +94,7 @@ if (!gotSingleInstanceLock) {
       const hint = app.isPackaged
         ? '请反馈日志文件或重新安装应用。'
         : '请从项目根目录在终端中执行：npm start';
-      dialog.showErrorBox('AI Infra Learning 启动失败', `${message}\n\n${hint}`);
+      dialog.showErrorBox('Enterprise Agent Platform Skills 启动失败', `${message}\n\n${hint}`);
       app.quit();
     }
   });
@@ -120,7 +124,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    title: 'AI Infra Learning',
+    title: 'Enterprise Agent Platform Skills',
     backgroundColor: getWindowBackgroundColor(settingsStore?.getSettings().theme ?? 'light'),
     webPreferences: getSecureWebPreferences(path.join(__dirname, 'preload.js'))
   });
@@ -180,7 +184,7 @@ function createWindow() {
         return;
       }
       dialog.showErrorBox(
-        'AI Infra Learning 加载失败',
+        'Enterprise Agent Platform Skills 加载失败',
         `渲染页面加载失败：${errorDescription}\n\n请反馈日志文件或重新安装应用。`
       );
     });
@@ -323,49 +327,6 @@ function registerIpcHandlers(getStore: () => LearningStore, getSettingsStore: ()
       throw new Error(`Invalid status: ${status}`);
     }
     return getStore().updateTopicStatus(topicId, status as StudyStatus);
-  });
-  ipcMain.handle('learning:getTopicGate', (_event, topicId: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    return getStore().getTopicGate(topicId);
-  });
-  ipcMain.handle('learning:startGateAttempt', (_event, topicId: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    return getStore().startGateAttempt(topicId);
-  });
-  ipcMain.handle('learning:checkSingleAnswer', (_event, topicId: unknown, questionId: unknown, answer: unknown) => {
-    if (typeof topicId !== 'string' || typeof questionId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId and questionId must be strings');
-    }
-    if (answer !== 'compute' && answer !== 'memory') {
-      throw new Error(`Invalid answer: ${String(answer)}`);
-    }
-    return getStore().checkSingleAnswer(topicId, questionId, answer);
-  });
-  ipcMain.handle('learning:finalizeAttempt', (_event, topicId: unknown, answers: unknown) => {
-    if (typeof topicId !== 'string') {
-      throw new Error('Invalid IPC payload: topicId must be a string');
-    }
-    if (!Array.isArray(answers)) {
-      throw new Error('Invalid IPC payload: answers must be an array');
-    }
-    const sanitized = answers.map((entry, index) => {
-      if (!entry || typeof entry !== 'object') {
-        throw new Error(`Invalid answer entry at index ${index}`);
-      }
-      const e = entry as Record<string, unknown>;
-      if (typeof e.questionId !== 'string') {
-        throw new Error(`Invalid questionId at index ${index}`);
-      }
-      if (e.answer !== 'compute' && e.answer !== 'memory') {
-        throw new Error(`Invalid answer at index ${index}`);
-      }
-      return { questionId: e.questionId, answer: e.answer as 'compute' | 'memory' };
-    });
-    return getStore().finalizeAttempt(topicId, sanitized);
   });
   ipcMain.handle('learning:updateTheme', (_event, theme: unknown) => {
     if (!isValidAppTheme(theme)) {

@@ -4,15 +4,17 @@
 
 ## 项目当前状态（以当前分支代码为准）
 
-- 这是面向 GTS AI Infra 团队内部学习的 Windows Electron 应用。
+- 这是面向 GTS AI Infra 团队内部学习的 Windows Electron 应用（**AI Infra Learning 2026 交互 Demo**）。
 - 当前已落地的学习能力包含：
-  - 4 个 Stage、15 个 Topic 的学习列表与详情页（Enterprise Agent Platform Builder 课程）。
-  - Topic 正文渲染（Markdown）、专题图示（`resources/topic-diagrams`）与来源信息（`sources`）。
+  - 3 个 Stage、5 个 Topic 的学习列表与详情页。
+  - 每个 Topic 含 `interactive_demo`，由 `InteractiveLesson.tsx` 渲染原生 React 交互动效。
+  - Topic 正文渲染（Markdown）、来源信息（`sources`）。
   - 学习状态持久化（`progress.json`）与进度统计。
   - 路线图视图（Roadmap）与主干学习路径展示。
   - 主题设置（light/dark）持久化（`settings.json`）。
   - 开发模式 seed 热重载（修改 `resources/seed_data.json` 后自动刷新）。
-- 未明确要求时，不要扩展到考试系统、错题本、内容编辑器、导入导出、多端同步、在线后端等 Phase 2/3 功能。
+- 当前 seed **未引用** `resources/topic-diagrams` SVG，但 `learning-asset://` 协议仍保留供后续正文插图。
+- 未明确要求时，不要扩展到考试系统、错题本、gate 判分、内容编辑器、导入导出、多端同步、在线后端等 Phase 2/3 功能。
 
 ## 技术栈与依赖
 
@@ -25,7 +27,7 @@
 
 ## 数据与资源约定
 
-- 内置课程数据：`resources/seed_data.json`（只读内容源）。
+- 内置课程数据：`resources/seed_data.json`（只读内容源，含 `interactive_demo` 字段）。
 - 题图资源：`resources/topic-diagrams/*.svg`（通过 `learning-asset://` 协议访问）。
 - 来源快照：`resources/source-snapshots/*.md`（内容核验留痕）。
 - 用户学习进度：`app.getPath('userData')/progress.json`。
@@ -37,6 +39,7 @@
 
 - `src/main/`：主进程、IPC、存储、路径解析、安全策略。
 - `src/main/preload.ts`：唯一桥接层，仅通过 `contextBridge.exposeInMainWorld('learning', ...)` 暴露 API。
+- `src/renderer/components/InteractiveLesson.tsx`：唯一交互入口，由 `TopicDetailView` 在正文前挂载；交互不得写入 Markdown HTML。
 - `src/renderer/`：React UI，不得直接访问 Node/fs/raw `ipcRenderer`。
 - `src/shared/types.ts`：main/preload/renderer 共享类型，结构变更必须同步更新相关实现与测试。
 - 仅通过 `window.learning` 与主进程通信，当前 API 包括：
@@ -80,12 +83,13 @@
 
 ## 测试与验收要求
 
+- 修改 `InteractiveLesson`、`interactive_demo` schema 或交互样式后，至少运行 `npm test` 并做实窗 QA。
 - 修改 `seed_data.json`、`learningStore`、进度统计、Roadmap 图数据后，至少运行 `npm test`。
 - 修改共享类型、IPC、preload、主进程逻辑后，运行 `npm run typecheck`。
 - 修改安全配置时，补充或更新 `test/electronSecurity.test.ts`。
 - 修改路径解析、打包资源或 `learning-asset` 逻辑时，补充或更新 `test/paths.test.ts`。
 - 修改设置持久化逻辑时，补充或更新 `test/settingsStore.test.ts`。
-- UI 变更应覆盖关键交互：初始加载、Topic 切换、状态更新、视图切换、错误展示、主题切换。
+- UI 变更应覆盖关键交互：初始加载、Topic 切换、交互 step 切换、状态更新、视图切换、错误展示、主题切换。
 
 ## Windows 与打包注意事项
 

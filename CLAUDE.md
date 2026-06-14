@@ -6,12 +6,13 @@
 
 ## 项目定位
 
-**产品定位：高保真电子书（Enterprise Agent Platform Builder 学习手册）**。GTS AI Infra 团队内部学习 App（Windows Electron 桌面端），用 Markdown 渲染 + 侧边栏导航 + 路线图 DAG 三件套承载 4 Stage / 15 Topic 课程内容。**没有交互组件、没有判断力 gate、没有自动判分**。Phase 2 曾尝试 RooflineChart + gate 路线，因核心 5 个 topic 全部换主题、宿主消失，已于 2026-05 全量回退电子书定位（详见 [docs/2026-05-content-audit.md](docs/2026-05-content-audit.md)）。
+**产品定位：AI Infra 2026 交互 Demo（3 Stage / 5 Topic）**。GTS AI Infra 团队内部学习 App（Windows Electron 桌面端）。核心差异化是 `InteractiveLesson` 原生 React 动效 + Markdown 正文 + 侧边栏 + Roadmap DAG。
 
-任何 PR 不要重新引入"交互组件 / 自动判分 / split-before-render directive 解析"，除非产品明确转向。
+**产品转向授权**（2026-06）：commit `92b9eab` + [HANDOFF_AI_INFRA_LEARNING_2026.md](HANDOFF_AI_INFRA_LEARNING_2026.md)。本次转向显式触发原「除非产品明确转向」条款。
 
-- **当前已交付**：4 个 Stage / 15 个 Topic 的 Enterprise Agent Platform Builder 课程内容、专题详情、学习状态持久化、进度统计、路线图 DAG、Topic 富文本（代码块 / 表格 / 引用 / 列表）
-- **不在路线图**：考试模块、知识管理 CRUD、JSON 导入导出、移动端、多端同步、AI 出题、交互判断力 gate
+- **当前已交付**：3 Stage / 5 Topic、`interactive_demo` 数据结构、InteractiveLesson（5 种 demo kind）、学习状态持久化、进度统计、Roadmap、主题切换、seed 热重载
+- **已删除、勿恢复（除非新产品决策）**：RooflineChart 判断力 gate、split-before-render directive（`:::interactive{...}:::`）、gate 相关 IPC
+- **不在路线图**：考试模块、知识管理 CRUD、JSON 导入导出、移动端、多端同步、AI 出题
 
 ---
 
@@ -32,7 +33,7 @@
 ```bash
 npm install              # 装依赖
 npm start                # 启动 Electron dev
-npm test                 # 跑全部测试（6 文件 / 56 用例）
+npm test                 # 跑全部测试（7 文件 / 50 用例，变更后以 vitest 输出为准）
 npm run typecheck        # tsc --noEmit
 npx vite build           # 仅打 renderer bundle 验证
 npm run build            # vite build + electron-forge package（Win x64）
@@ -58,7 +59,8 @@ src/
       markdown.ts                markdown-it + DOMPurify + highlight.js 单例（XSS 防线）
     components/
       Sidebar.tsx                两级导航树
-      TopicDetailView.tsx        详情卡片（why / key_points / bodyMd / real_world_connection / sources / 检查点）
+      TopicDetailView.tsx        详情卡片（why / key_points / bodyMd / interactiveDemo / sources / 检查点）
+      InteractiveLesson.tsx      5 类 interactive demo renderer（stack_compare / kv_paged_attention / batching_prefill / ascend_operator / distributed_inference）
       MarkdownContent.tsx        纯 markdown 渲染（dangerouslySetInnerHTML，sanitize 已在 markdown.ts 内做）
       ProgressOverview.tsx       Stage 进度概览
       ViewTabs.tsx               列表 / 路线图 切换
@@ -72,12 +74,13 @@ src/
     types.ts                     main / preload / renderer 共享类型
 
 resources/
-  seed_data.json                 4 Stage / 15 Topic seed + learning_paths（main_track + 3 条 alternative tracks）
+  seed_data.json                 3 Stage / 5 Topic seed + learning_paths（AI Infra 2026 demo）
 
 test/
   learningStore.test.ts          seed 加载、progress v2 持久化、roadmap graph、非法输入、source 投影
   markdown.test.ts               XSS sanitization + 渲染基础
-  renderer.test.tsx              加载、状态切换、视图切换、sidebar 选中、sources 渲染、热重载
+  renderer.test.tsx              加载、状态切换、视图切换、sidebar 选中、sources 渲染、热重载、交互 step 重置
+  interactiveLesson.test.tsx     三处同步不变量、batch stalled 计数、负载滑块、自动演示、markdown 安全边界
   electronSecurity.test.ts       CSP / webPreferences
   paths.test.ts                  dev/prod 路径解析
   settingsStore.test.ts          theme 持久化
@@ -95,7 +98,7 @@ test/
 | `getOutline()` | `StageWithTopics[]` |
 | `getProgress()` | `ProgressSummary` |
 | `getSettings()` | `AppSettings`（含 theme） |
-| `getTopic(id)` | `TopicDetail`（含 `bodyMd`、`prerequisites`、`keyPoints`、`sources`） |
+| `getTopic(id)` | `TopicDetail`（含 `bodyMd`、`interactiveDemo`、`prerequisites`、`keyPoints`、`sources`） |
 | `getRoadmapGraph()` | `{ edges: {from,to}[]; mainTrack: string[] }` |
 | `updateTopicStatus(id, status)` | `TopicDetail` |
 | `updateTheme(theme)` | `AppSettings` |
@@ -146,9 +149,13 @@ CSP（`src/main/security.ts`）：
 - 放宽 `ALLOWED_URI_REGEXP`
 - 引入需要 `unsafe-eval` 的依赖（如 KaTeX 历史版本）
 
-### 不要重新引入交互指令解析
+### 交互与安全边界
 
-`split-before-render` directive 解析（`:::interactive{...}:::`）已于 2026-05 删除。理由：5 个核心 topic 全部换主题导致原 RooflineChart 宿主消失，整套 gate IPC + 交互组件成孤儿代码。如未来要恢复交互能力，必须先经过产品定位讨论，不要在内容 PR 里悄悄加回 directive 解析。
+- 交互只通过 `InteractiveLesson` + seed `interactive_demo` 扩展；**不得**把交互逻辑放进 `body_md` 或 Markdown HTML
+- **不得**悄悄恢复 split-before-render directive（`:::interactive{...}:::`）或 gate 相关 IPC（RooflineChart 判断力 gate 已于 2026-05 删除）
+- 不得放宽 Markdown XSS / CSP / `learning-asset` 白名单
+- 修改 `interactive_demo` schema 须同步 `shared/types.ts` + `learningStore.ts` + 测试
+- 交互 demo 指标不得伪造：`buildMetrics` 须与可视状态同一变量派生
 
 ---
 
@@ -172,13 +179,12 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 
 ---
 
-## 内容质量基线（2026-05 内容审查后落地）
+## 内容质量基线（2026 Demo）
 
-- **每个 topic 至少 3 条独立权威信源**（vendor 官方文档 / arXiv 论文 / 一线团队博客），不得集中于单一来源
-- **body_md 至少出现 1 个带数字的 war story 或案例**（"我们某次 P99 TTFT 从 X 涨到 Y，定位到 Z"），避免"清单 + 反问句"AI 模板
-- **凡涉及华为生态的话题，至少出现 1 个具体名词**（MindIE / Atlas / CANN / HCCL），体现私有化受限网络的差异化视角
-- **2024-2026 年的关键演进必须在相关 topic 现身**：MCP（T07）、Anthropic Skills（T05）、OpenTelemetry GenAI semantic conventions（T10）、OWASP LLM Top 10 2025 / NIST AI RMF / EU AI Act（T11）、Anthropic prompt caching（T10）、Chunked Prefill / Disaggregated P/D（T02）
-- **难度与时长必须诚实**：T01 / T15 难度 ≤ 2；T07 / T09 / T11 难度 4 或拆分
+- **每个 topic 至少 3 条独立权威信源**（vendor 官方文档 / arXiv / 一线团队博客）
+- **body_md 须说明工程场景与关键判断力**；具体规格、版本、性能数字须先进 `source-snapshots/Txx.md` 再写入正文
+- **交互 demo 指标须与可视状态一致**，不得为演示效果伪造数字
+- 历史 15 Topic Enterprise Agent 审查见 [docs/2026-05-content-audit.md](docs/2026-05-content-audit.md)，**不作为当前 Demo 约束**
 
 ---
 
@@ -199,7 +205,7 @@ React Flow v12 在 jsdom 里**不会渲染节点 DOM**（即便补 `ResizeObserv
 - 不为兼容未发布的中间状态叠加 shim
 - 保持 TypeScript `strict` 通过
 - 优先小而明确的函数，避免过早抽象
-- 不主动扩展未交付的考试 / CRUD / 交互 gate 功能，除非用户明确要求
+- 不主动扩展未交付的考试 / CRUD / gate 判分功能，除非用户明确要求；交互扩展走 `InteractiveLesson` + `interactive_demo`
 
 ---
 

@@ -48,27 +48,27 @@
           {
             "id": "service",
             "label": "服务入口",
-            "explanation": "Triton、MindIE-Service、vLLM(Ascend 插件)面向请求接入、协议适配、调度和流式返回。"
+            "explanation": "请求从这里进来：协议适配（OpenAI 兼容是事实标准）、调度、流式返回。出问题先看这层——是排队/限流/路由，还是下游引擎慢。Triton、MindIE-Service、vLLM 都在这层。"
           },
           {
             "id": "engine",
             "label": "推理引擎",
-            "explanation": "TensorRT-LLM(NVIDIA)与 MindIE-LLM/RT(昇腾)是推理引擎，负责把模型编译/优化成高效推理路径；昇腾侧的图编译与模型转换由 CANN 的 GE/ATC 承担。"
+            "explanation": "推理引擎把模型编译/优化成高效执行路径。注意昇腾的图编译与模型转换是 CANN 的 GE/ATC 干的、不属于引擎本身，版本对不齐常卡在这里。对应 TensorRT-LLM（NVIDIA）与 MindIE-LLM/RT（昇腾）。"
           },
           {
             "id": "runtime",
             "label": "运行时",
-            "explanation": "CUDA Runtime 与 AscendCL 管理设备、内存、流和任务提交。"
+            "explanation": "运行时管理设备、内存、流和任务提交。CUDA Runtime 和 AscendCL 是同位概念。显存 OOM、流调度异常多半落在这层。"
           },
           {
             "id": "comm",
             "label": "通信",
-            "explanation": "NCCL 与 HCCL 处理多卡 collective，决定扩展时是否会被通信拖住。"
+            "explanation": "多卡 collective 通信（NCCL / HCCL）是 TP/PP/EP 并行的隐性成本。扩展时带宽或拓扑不匹配，会把并行收益吃掉。"
           },
           {
             "id": "hardware",
             "label": "硬件",
-            "explanation": "GPU 与 Ascend NPU 的执行单元、内存层次和数据搬运模型不同。"
+            "explanation": "执行单元与内存层次。GPU 的 SM 和 NPU 的 AI Core（Cube/Vector）数据通路不同——Cube 走 GM→L1→L0、Vector 走 UB，别直接套用 GPU 的缓存直觉。"
           }
         ]
       },
@@ -154,22 +154,22 @@
           {
             "id": "no-cache",
             "label": "没有缓存",
-            "explanation": "每生成一个 token 都要重新计算历史所有 token 的 K/V，后续 token 被大量重复计算拖慢。"
+            "explanation": "没有 KV Cache 时，每生成一个新 token 都要重算所有历史 token 的 K/V——计算量随长度平方增长，长上下文直接不可用。这是为什么 KV Cache 是推理的基线优化、不是可选项。"
           },
           {
             "id": "cache",
             "label": "追加 K/V",
-            "explanation": "开启 KV Cache 后，新 token 只追加自己的 K/V，并复用历史卡片。"
+            "explanation": "开 KV Cache 后，历史 K/V 只算一次并保存，新 token 只追加自己的，计算从平方降为线性。代价是 KV 占显存随上下文线性增长——这是后面分页、offload、P/D 分离要解决的核心矛盾。"
           },
           {
             "id": "paged",
             "label": "分页 block",
-            "explanation": "PagedAttention 把 KV 拆成 block，避免必须连续分配一整段显存；它需要改写 attention kernel 以支持非连续 block，但不增加计算量。"
+            "explanation": "PagedAttention 把 KV 拆成固定大小 block、按需分配，不用预先留一整段连续显存——碎片和浪费大幅下降，吞吐能上去。代价是要改写 attention kernel 支持非连续 block（工程改造，不增加计算量）。这是 vLLM 的核心创新。"
           },
           {
             "id": "prefix",
             "label": "共享前缀",
-            "explanation": "多个请求共享 system prompt 或文档前缀时，prefix block 可以被复用。"
+            "explanation": "多请求共享 system prompt 或文档前缀时，前缀对应的 block 只存一份、被复用，RAG 与长 system prompt 场景下省显存也降 TTFT。昇腾注意：MindIE 的 PD 分离和 Prefix Cache 不能同时开，是选型硬约束。"
           }
         ]
       },
@@ -243,22 +243,22 @@
           {
             "id": "static",
             "label": "静态 batch",
-            "explanation": "静态 batch 等最慢请求结束，短请求会被长输出拖住。"
+            "explanation": "静态 batch 凑满一批一起处理、一起结束。问题在于 batch 里最慢的请求决定整体节奏，短请求被长请求拖住、GPU 在空等——这是吞吐上不去的根因。"
           },
           {
             "id": "continuous",
             "label": "连续补位",
-            "explanation": "Continuous Batching 在每个调度步补入新请求，提高 GPU 利用率。"
+            "explanation": "连续 batching（iteration-level scheduling，源自 Orca）让完成的请求立刻离开、新请求在每个 token step 动态补入，GPU 不再空等、吞吐显著提升。注意它改善的是吞吐，不保证每个请求体验更好。"
           },
           {
             "id": "chunk",
             "label": "Prefill 分块",
-            "explanation": "Chunked Prefill 把长 prompt 切开，避免一次性霸占调度窗口。"
+            "explanation": "长 prompt 的 prefill 切成小块与 decode 交错，不再一次性霸占调度窗口。反直觉点：它改善 decode 的 TPOT 尾延迟，但长 prompt 自己的 TTFT 可能略升——看告警时要分清是 TTFT 还是 TPOT 在涨。"
           },
           {
             "id": "balance",
             "label": "延迟平衡",
-            "explanation": "过小的 chunk 会增加调度开销，过大的 chunk 又会伤害 decode 稳定性。"
+            "explanation": "chunk 大小是权衡：太小调度开销大，太大又退回 prefill 霸占、伤 decode。长 prompt 占比升高时，先调 chunk 策略而不是直接扩容。"
           }
         ]
       },
@@ -331,22 +331,22 @@
           {
             "id": "tile",
             "label": "Tiling",
-            "explanation": "host 侧先根据 shape 与缓存容量决定每次搬运多大的 tile。"
+            "explanation": "host 侧根据 shape 和本地缓存容量决定每次搬多少（tile 大小）。tile 太大放不进本地缓存、太小并行度和流水效率不足——这是算子调优的第一个旋钮。"
           },
           {
             "id": "copyin",
             "label": "CopyIn",
-            "explanation": "数据从 GM 搬入 Local Memory，为 AI Core 计算准备输入。"
+            "explanation": "数据从 GM（全局内存，慢）搬入 Local Memory（UB 等，快）准备计算。搬运是算子性能的常见瓶颈：AI Core 算得再快，数据供不上也白搭。"
           },
           {
             "id": "compute",
             "label": "Compute",
-            "explanation": "Cube/Vector 等计算单元处理当前 tile，同时下一块可以准备搬运。"
+            "explanation": "Cube/Vector 处理当前 tile。关键是这一步与搬运、写回做流水重叠——多个 tile 同时处于不同阶段，AI Core 才不闲着。注意 Cube 走 L1→L0、Vector 走 UB，数据通路不同。"
           },
           {
             "id": "copyout",
             "label": "CopyOut",
-            "explanation": "结果写回 GM，流水线重叠越好，AI Core 等待越少。"
+            "explanation": "结果写回 GM。流水重叠越好，AI Core 等待慢内存的时间越少、吞吐越高。算子慢时先判断瓶颈是搬运、计算还是同步，而不是盲目改算法。"
           }
         ]
       },
@@ -435,22 +435,22 @@
           {
             "id": "single",
             "label": "单池混跑",
-            "explanation": "prefill 与 decode 共用资源，长输入可能干扰逐 token 输出。"
+            "explanation": "prefill（算力密集）和 decode（显存带宽密集）共用一个资源池。长输入的 prefill 抢占 decode 的算力，导致逐 token 输出卡顿——这是 P99 TPOT 飙升的常见根因。"
           },
           {
             "id": "split",
             "label": "P/D 分离",
-            "explanation": "prefill pool 专注构建 KV，decode pool 专注稳定生成。"
+            "explanation": "prefill 和 decode 分到不同资源池各自优化：prefill 池吃满算力处理输入，decode 池稳定吐 token，TTFT 和 TPOT 都能改善。但前提是 KV 能高效地从 prefill 池送到 decode 池。"
           },
           {
             "id": "transfer",
             "label": "KV 传输",
-            "explanation": "收益取决于 KV 传输带宽、延迟和接收端可用显存。"
+            "explanation": "prefill 算完的 KV 要传给 decode 池，这一步的带宽和延迟是新成本。带宽不够，transfer 自己变成新瓶颈、吃掉分离的收益——NVIDIA 用 NIXL、昇腾用 HCCL/Mooncake，是两套生态。P/D 不是默认更快。"
           },
           {
             "id": "route",
             "label": "智能路由",
-            "explanation": "KV-aware routing 会把请求送到更可能命中缓存或负载更合适的 worker。"
+            "explanation": "KV-aware routing 把请求送到更可能命中已有 KV、或负载更合适的 worker，命中就省掉重建 KV。这是 P/D 分离在高并发下才真正划算的最后一块：低并发时 transfer 开销 > 路由收益。"
           }
         ]
       },
